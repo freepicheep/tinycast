@@ -54,28 +54,37 @@ private struct PluginSettingsRow: View {
     var body: some View {
         switch plugin.manifest {
         case .success(let manifest):
-            SettingsRow(
-                title: manifest.title, subtitle: summary(manifest), subtitleLineLimit: 2,
-                alignment: .top
-            ) {
-                IconTile(symbol: manifest.icon ?? "puzzlepiece", tint: SettingsTab.plugins.tint)
+            SettingsRow(title: manifest.title, subtitle: summary(manifest), subtitleLineLimit: 2) {
+                icon(manifest.icon ?? "puzzlepiece", tint: SettingsTab.plugins.tint)
             } trailing: {
                 EmptyView()
             }
         case .failure(let error):
             SettingsRow(
                 title: plugin.directory.lastPathComponent, subtitle: error.description,
-                subtitleLineLimit: 2, alignment: .top
+                subtitleLineLimit: 2
             ) {
-                IconTile(symbol: "exclamationmark.triangle.fill", tint: .red)
+                icon("exclamationmark.triangle.fill", tint: .red)
             } trailing: {
                 EmptyView()
             }
         }
     }
 
+    /// A tile is a `GeometryReader`, so it takes the size it's given: an extension's row icon size.
+    private func icon(_ symbol: String, tint: IconTint) -> some View {
+        IconTile(symbol: symbol, tint: tint)
+            .frame(width: Theme.Size.rowIcon, height: Theme.Size.rowIcon)
+    }
+
+    /// Up to three command titles, then how many more, so a big plugin's row stays readable.
     private func summary(_ manifest: PluginManifest) -> String {
-        var parts = [manifest.commands.map(\.title).formatted(.list(type: .and))]
+        let titles = manifest.commands.map(\.title)
+        let commands =
+            titles.count <= 3
+            ? titles.formatted(.list(type: .and))
+            : String(localized: "\(titles.prefix(3).joined(separator: ", ")) and \(titles.count - 3) more")
+        var parts = [commands]
         if !manifest.permissions.isEmpty {
             let granted = manifest.permissions.map(\.title).sorted().formatted(.list(type: .and))
             parts.append(String(localized: "Uses \(granted)"))
