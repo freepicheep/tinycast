@@ -892,6 +892,7 @@
 		FA386C9B6DA24481565D506D /* ExtensionPackageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADFFB5180991764FB13FE0B /* ExtensionPackageManager.swift */; };
 		FA93B008A17CEC503CFD7E2E /* ExtensionMenuBarSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3111655F925234368AA7EE31 /* ExtensionMenuBarSnapshot.swift */; };
 		FAD4B4B7A3B39591C73C3BAD /* MenuSearchSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C42ACB4D70CA089A6E948069 /* MenuSearchSession.swift */; };
+		FAE6C708A11E705F37D8C20F /* PluginOpenTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16322DFD928D2A424C15A0E1 /* PluginOpenTarget.swift */; };
 		FB1D83A8BE027AC4F328D601 /* QuicklinkListScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0935D49C0A0175E54E69682B /* QuicklinkListScreen.swift */; };
 		FB223F8BBD51465FD64BC1D2 /* SymbolPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9F256977D955CC53C1D914E /* SymbolPicker.swift */; };
 		FB61E1BD69B390D26C9996DB /* ExtensionSignInSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6BBB22DFC9F53CCCCD8010C /* ExtensionSignInSession.swift */; };
@@ -1043,6 +1044,7 @@
 		1534DB79CC23709ABC5E9D9B /* PaletteMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaletteMode.swift; sourceTree = "<group>"; };
 		154222C91EFDB4D4490B6CE2 /* ExtensionArgumentsAccessory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionArgumentsAccessory.swift; sourceTree = "<group>"; };
 		1590A8769EF787763DE189B7 /* CommandArgumentsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandArgumentsRow.swift; sourceTree = "<group>"; };
+		16322DFD928D2A424C15A0E1 /* PluginOpenTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginOpenTarget.swift; sourceTree = "<group>"; };
 		164CB3E1BB5B7D87AF8E7023 /* CommandID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandID.swift; sourceTree = "<group>"; };
 		164DCBE855B7136AE08712D8 /* MarkdownInline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownInline.swift; sourceTree = "<group>"; };
 		1709EB9609FE6A1037E36BE6 /* RoomPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomPreviewView.swift; sourceTree = "<group>"; };
@@ -1986,6 +1988,7 @@
 			children = (
 				2ABC214100956A631684D5B0 /* InstalledPlugin.swift */,
 				720C4C2C0DE7673075AAD0BF /* PluginManifest.swift */,
+				16322DFD928D2A424C15A0E1 /* PluginOpenTarget.swift */,
 				8DA8550803B4C47D5C62AEB2 /* PluginPage.swift */,
 			);
 			path = Model;
@@ -4890,6 +4893,7 @@
 				DE04F1715F705AA1D0F540B3 /* PluginManager.swift in Sources */,
 				755ED086E18117A41929AAD8 /* PluginManifest.swift in Sources */,
 				F5AB6E125A6CB7659264ED44 /* PluginMarkdownView.swift in Sources */,
+				FAE6C708A11E705F37D8C20F /* PluginOpenTarget.swift in Sources */,
 				414571CA08D18006AF35EEA6 /* PluginPage.swift in Sources */,
 				13ED1815991B9F7A424A4231 /* PluginSession.swift in Sources */,
 				251C2673C8C4D2EA1CB01B5C /* PluginStorage.swift in Sources */,

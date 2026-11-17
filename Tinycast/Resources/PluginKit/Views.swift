@@ -12,11 +12,17 @@ public protocol View {
 
 /// What a primitive renders into. Underscored: a plugin builds views, never these.
 public enum _Element {
-    case list(PluginList, (() async -> Void)?)
-    case detail(PluginDetail, (() async -> Void)?)
+    case list(PluginList, _Task?)
+    case detail(PluginDetail, _Task?)
     case section(PluginSection)
     case item(PluginItem)
     case unavailable(String, String?)
+}
+
+/// A screen's `task`, and the id that restarts it when it changes.
+public struct _Task {
+    let key: String
+    let run: () async -> Void
 }
 
 public protocol _PrimitiveView: View {
@@ -93,7 +99,7 @@ public struct ForEach: _PrimitiveView {
 /// The searchable list of rows most commands show.
 public struct List: _PrimitiveView {
     private var list: PluginList
-    private var task: (() async -> Void)?
+    private var task: _Task?
 
     public init<Content: View>(@ViewBuilder content: () -> Content) {
         list = PluginList(
@@ -151,7 +157,14 @@ public struct List: _PrimitiveView {
     /// Runs once when the list first appears, and is cancelled when it leaves the stack.
     public func task(_ action: @escaping () async -> Void) -> List {
         var copy = self
-        copy.task = action
+        copy.task = _Task(key: "", run: action)
+        return copy
+    }
+
+    /// Like `task(_:)`, and cancelled and started again whenever `id` changes.
+    public func task<ID: Equatable>(id: ID, _ action: @escaping () async -> Void) -> List {
+        var copy = self
+        copy.task = _Task(key: "\(id)", run: action)
         return copy
     }
 }
@@ -242,7 +255,7 @@ public struct Item: _PrimitiveView {
 /// A page of Markdown, or the pane beside a list.
 public struct Detail: _PrimitiveView {
     fileprivate var detail: PluginDetail
-    private var task: (() async -> Void)?
+    private var task: _Task?
 
     public init(markdown: String) {
         detail = PluginDetail(title: nil, markdown: markdown, metadata: [], actions: [], isLoading: false)
@@ -277,7 +290,13 @@ public struct Detail: _PrimitiveView {
 
     public func task(_ action: @escaping () async -> Void) -> Detail {
         var copy = self
-        copy.task = action
+        copy.task = _Task(key: "", run: action)
+        return copy
+    }
+
+    public func task<ID: Equatable>(id: ID, _ action: @escaping () async -> Void) -> Detail {
+        var copy = self
+        copy.task = _Task(key: "\(id)", run: action)
         return copy
     }
 }

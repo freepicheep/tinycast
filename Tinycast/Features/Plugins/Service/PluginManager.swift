@@ -185,7 +185,7 @@ final class PluginManager {
         case .perform(let body): session?.call { try body() }
         case .copy(let text): services?.copy(text)
         case .paste(let text): services?.paste(text)
-        case .open(let target): services?.open(target)
+        case .open(let target): session?.open(target)
         }
     }
 

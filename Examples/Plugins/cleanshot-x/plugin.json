@@ -1,0 +1,223 @@
+{
+  "name": "cleanshot-x",
+  "title": "CleanShot X",
+  "description": "Capture, record, annotate and pin with CleanShot X.",
+  "icon": "camera.viewfinder",
+  "author": "Tinycast",
+  "urlSchemes": [
+    "cleanshot"
+  ],
+  "commands": [
+    {
+      "name": "cleanshot",
+      "title": "CleanShot X",
+      "subtitle": "Every capture and tool",
+      "icon": "camera.viewfinder",
+      "keywords": [
+        "screenshot",
+        "capture",
+        "record"
+      ]
+    },
+    {
+      "name": "capture-area",
+      "title": "Capture Area",
+      "subtitle": "CleanShot X",
+      "icon": "rectangle.dashed",
+      "mode": "action",
+      "keywords": [
+        "screenshot",
+        "region"
+      ]
+    },
+    {
+      "name": "capture-fullscreen",
+      "title": "Capture Fullscreen",
+      "subtitle": "CleanShot X",
+      "icon": "rectangle.inset.filled",
+      "mode": "action",
+      "keywords": [
+        "screenshot"
+      ]
+    },
+    {
+      "name": "capture-window",
+      "title": "Capture Window",
+      "subtitle": "CleanShot X",
+      "icon": "macwindow",
+      "mode": "action",
+      "keywords": [
+        "screenshot"
+      ]
+    },
+    {
+      "name": "capture-previous-area",
+      "title": "Capture Previous Area",
+      "subtitle": "CleanShot X",
+      "icon": "arrow.counterclockwise",
+      "mode": "action",
+      "keywords": [
+        "screenshot",
+        "again"
+      ]
+    },
+    {
+      "name": "self-timer",
+      "title": "Self-Timer",
+      "subtitle": "CleanShot X",
+      "icon": "timer",
+      "mode": "action",
+      "keywords": [
+        "screenshot",
+        "delay"
+      ]
+    },
+    {
+      "name": "all-in-one",
+      "title": "All-in-One",
+      "subtitle": "CleanShot X",
+      "icon": "square.grid.2x2",
+      "mode": "action",
+      "keywords": [
+        "screenshot",
+        "record"
+      ]
+    },
+    {
+      "name": "scrolling-capture",
+      "title": "Scrolling Capture",
+      "subtitle": "CleanShot X",
+      "icon": "arrow.up.and.down",
+      "mode": "action",
+      "keywords": [
+        "screenshot",
+        "long"
+      ]
+    },
+    {
+      "name": "record-screen",
+      "title": "Record Screen",
+      "subtitle": "CleanShot X",
+      "icon": "record.circle",
+      "mode": "action",
+      "keywords": [
+        "video",
+        "gif",
+        "recording"
+      ]
+    },
+    {
+      "name": "capture-text",
+      "title": "Capture Text",
+      "subtitle": "CleanShot X",
+      "icon": "text.viewfinder",
+      "mode": "action",
+      "keywords": [
+        "ocr",
+        "text recognition"
+      ]
+    },
+    {
+      "name": "open-annotate",
+      "title": "Annotate",
+      "subtitle": "CleanShot X",
+      "icon": "pencil.tip.crop.circle",
+      "mode": "action",
+      "keywords": [
+        "edit",
+        "markup"
+      ]
+    },
+    {
+      "name": "open-from-clipboard",
+      "title": "Open from Clipboard",
+      "subtitle": "CleanShot X",
+      "icon": "doc.on.clipboard",
+      "mode": "action",
+      "keywords": [
+        "paste",
+        "image"
+      ]
+    },
+    {
+      "name": "pin",
+      "title": "Pin Screenshot",
+      "subtitle": "CleanShot X",
+      "icon": "pin",
+      "mode": "action",
+      "keywords": [
+        "float"
+      ]
+    },
+    {
+      "name": "add-quick-access-overlay",
+      "title": "Add Quick Access Overlay",
+      "subtitle": "CleanShot X",
+      "icon": "square.stack",
+      "mode": "action",
+      "keywords": [
+        "overlay"
+      ]
+    },
+    {
+      "name": "restore-recently-closed",
+      "title": "Restore Recently Closed",
+      "subtitle": "CleanShot X",
+      "icon": "arrow.uturn.backward",
+      "mode": "action",
+      "keywords": [
+        "undo"
+      ]
+    },
+    {
+      "name": "open-history",
+      "title": "Open History",
+      "subtitle": "CleanShot X",
+      "icon": "clock.arrow.circlepath",
+      "mode": "action",
+      "keywords": [
+        "recent"
+      ]
+    },
+    {
+      "name": "toggle-desktop-icons",
+      "title": "Toggle Desktop Icons",
+      "subtitle": "CleanShot X",
+      "icon": "eye",
+      "mode": "action",
+      "keywords": [
+        "clean desktop"
+      ]
+    },
+    {
+      "name": "hide-desktop-icons",
+      "title": "Hide Desktop Icons",
+      "subtitle": "CleanShot X",
+      "icon": "eye.slash",
+      "mode": "action",
+      "keywords": [
+        "clean desktop"
+      ]
+    },
+    {
+      "name": "show-desktop-icons",
+      "title": "Show Desktop Icons",
+      "subtitle": "CleanShot X",
+      "icon": "eye",
+      "mode": "action",
+      "keywords": [
+        "desktop"
+      ]
+    },
+    {
+      "name": "open-settings",
+      "title": "Open CleanShot Settings",
+      "subtitle": "CleanShot X",
+      "icon": "gearshape",
+      "mode": "action",
+      "keywords": [
+        "preferences"
+      ]
+    }
+  ]
+}

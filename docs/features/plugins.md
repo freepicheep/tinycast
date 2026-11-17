@@ -24,8 +24,10 @@ SwiftUI's, and Tinycast draws them with its own palette rows and panes.
   without `clipboard`, there is no `import AppKit`. A plugin that uses an API it didn't ask for fails
   to compile, with an ordinary "cannot find" error.
 - **Copy, paste and open never reach the script.** They are values (`PluginActionKind.copy(String)`),
-  so Tinycast performs them itself after the script has returned. Opening is limited to web addresses,
-  `mailto:` and file paths.
+  so Tinycast performs them itself after the script has returned.
+- **`open` reaches web addresses, `mailto:`, file paths and the app link schemes `urlSchemes` names.**
+  `PluginOpenTarget` decides, for a `Link` and for the script's own `open` call alike, before anything
+  reaches `NSWorkspace`. No manifest may name `file` or Tinycast's or Raycast's own schemes.
 - **`Model/PluginPage.swift` is the boundary.** The kit renders a screen into those `@StirExport`
   types and the palette draws only them; neither side sees the other's view types.
 - **`Resources/PluginKit` is Stir source, never compiled into the app.** It ships as a folder
@@ -43,6 +45,7 @@ Open Plugins Folder). It holds a `plugin.json` and a `main.swift`, plus any othe
   "description": "The time in the cities you care about.",
   "icon": "globe",
   "permissions": [],
+  "urlSchemes": [],
   "commands": [
     { "name": "clocks", "title": "World Clock", "subtitle": "Time zones", "keywords": ["time"] },
     { "name": "copy-utc", "title": "Copy UTC Time", "mode": "action" }
@@ -88,7 +91,17 @@ struct Clocks: View {
 ```
 
 Without `.searchable`, Tinycast filters the rows by title, subtitle and `.keywords`. With
-`.searchable(text: $query)`, the plugin gets each keystroke and filters its rows itself.
+`.searchable(text: $query)`, the plugin gets each keystroke and filters its rows itself, usually
+with `.task(id: query)`, which cancels and restarts its work as the query changes.
+
+Two complete plugins are in [`Examples/Plugins`](../../Examples/Plugins). Copy either folder into the
+Plugins folder to install it:
+
+- **`hacker-news`** (port of Raycast's Hacker News): front page, newest, Ask HN and Show HN from HN's
+  Algolia API, plus search as you type. Shows `network`, `@AppStorage`, `.task(id:)` and cancellation.
+- **`cleanshot-x`** (port of Raycast's CleanShot X): every CleanShot X tool as a launcher command, plus
+  a list of them whose ⌘K menu says what to do with the capture. Shows `urlSchemes` and action
+  commands registered in a loop.
 
 ## The kit
 
@@ -97,9 +110,9 @@ The `Tinycast` module every plugin imports (`Resources/PluginKit`):
 | Kind | API |
 |---|---|
 | Screens | `List`, `Detail(markdown:)`, `Section`, `Item`, `ForEach`, `Group`, `EmptyView`, `ContentUnavailableView` |
-| List modifiers | `navigationTitle`, `searchable(text:prompt:)`, `loading`, `task` |
+| List modifiers | `navigationTitle`, `searchable(text:prompt:)`, `loading`, `task`, `task(id:)` |
 | Item modifiers | `id`, `badge`, `keywords`, `tint`, `actions { }`, `detail { }` |
-| Detail modifiers | `navigationTitle`, `metadata { LabeledContent }`, `actions { }`, `loading`, `task` |
+| Detail modifiers | `navigationTitle`, `metadata { LabeledContent }`, `actions { }`, `loading`, `task`, `task(id:)` |
 | Actions | `Button(_:systemImage:role:action:)`, `CopyButton`, `PasteButton`, `Link`, `NavigationLink`, `.keyboardShortcut` |
 | State | `@State`, `@Binding`, `@AppStorage` (String, Int, Double, Bool) |
 | Host | `showHUD`, `closeWindow`, `open`, `copyToClipboard`, `paste`, `dismiss`, `Plugin.commandName` |
@@ -143,6 +156,7 @@ and the plugin's recent `print` output.
 ## Testing
 
 `./Scripts/test-plugins.sh` builds `Tests/PluginHost`, a SwiftPM package that links the real Stir and
-drives sessions from `Tests/PluginHost/Fixtures` the way the palette does: rendering, bindings,
-navigation, storage, action commands, compile errors, runaway loops and permission gating. Its sources
+drives sessions from `Tests/PluginHost/Fixtures` and `Examples/Plugins` the way the palette does:
+rendering, bindings, navigation, storage, action commands, compile errors, runaway loops, permission
+gating and `open` rules. The Hacker News checks call the live API, and are skipped when it's unreachable. Its sources
 are symlinks to `Features/Plugins`. The first run builds Stir and swift-syntax and takes a few minutes.

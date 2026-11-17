@@ -121,19 +121,21 @@ final class PluginCoordinator: PluginHostServices {
         Paster.pasteString(text, previousApp: target)
     }
 
-    /// A web address opens in the browser, a path in its app; anything else is refused.
-    func open(_ target: String) {
-        let expanded = (target as NSString).expandingTildeInPath
-        if expanded.hasPrefix("/") {
-            NSWorkspace.shared.open(URL(filePath: expanded))
-        } else if let url = URL(string: target), let scheme = url.scheme?.lowercased(),
-            ["http", "https", "mailto"].contains(scheme)
-        {
-            NSWorkspace.shared.open(url)
-        } else {
-            core.showMessage(String(localized: "Plugins can open web addresses and files"), tone: .danger)
+    /// Already allowed by `PluginOpenTarget`; an app link with no app to take it says so.
+    func open(_ url: URL) {
+        if !url.isFileURL, NSWorkspace.shared.urlForApplication(toOpen: url) == nil {
+            core.showMessage(
+                String(localized: "No app on this Mac opens \(url.scheme ?? "") links"), tone: .danger)
             return
         }
         paletteCoordinator.hidePalette(restoreFocus: false)
+        NSWorkspace.shared.open(url)
+    }
+
+    func refuseOpen(_ target: String) {
+        let scheme = URL(string: target)?.scheme ?? target
+        core.showMessage(
+            String(localized: "This plugin can't open \(scheme) links: plugin.json doesn't list them"),
+            tone: .danger)
     }
 }

@@ -9,6 +9,8 @@ struct PluginManifest: Sendable, Hashable {
     let icon: String?
     let author: String?
     let permissions: Set<PluginPermission>
+    /// App link schemes the plugin may open, such as `cleanshot`; web, mail and files need none.
+    let urlSchemes: Set<String>
     let commands: [PluginCommand]
 }
 
@@ -51,6 +53,7 @@ enum PluginManifestError: Error, Hashable, CustomStringConvertible {
     case noCommands
     case duplicateCommand(String)
     case unknownPermission(String)
+    case invalidURLScheme(String)
 
     var description: String {
         switch self {
@@ -60,6 +63,7 @@ enum PluginManifestError: Error, Hashable, CustomStringConvertible {
         case .noCommands: "plugin.json declares no commands"
         case .duplicateCommand(let name): "the command “\(name)” is declared twice"
         case .unknownPermission(let name): "“\(name)” isn't a permission Tinycast grants"
+        case .invalidURLScheme(let scheme): "“\(scheme)” isn't a URL scheme a plugin may open"
         }
     }
 }
@@ -82,6 +86,11 @@ extension PluginManifest {
             }
             permissions.insert(permission)
         }
+        var schemes: Set<String> = []
+        for scheme in raw.urlSchemes ?? [] {
+            guard PluginOpenTarget.isOpenableScheme(scheme) else { throw .invalidURLScheme(scheme) }
+            schemes.insert(scheme.lowercased())
+        }
         var seen: Set<String> = []
         var commands: [PluginCommand] = []
         for command in rawCommands {
@@ -94,7 +103,7 @@ extension PluginManifest {
         }
         return PluginManifest(
             name: raw.name, title: raw.title, description: raw.description, icon: raw.icon,
-            author: raw.author, permissions: permissions, commands: commands)
+            author: raw.author, permissions: permissions, urlSchemes: schemes, commands: commands)
     }
 
     static func isValidName(_ name: String) -> Bool {
@@ -121,6 +130,7 @@ extension PluginManifest {
         let icon: String?
         let author: String?
         let permissions: [String]?
+        let urlSchemes: [String]?
         let commands: [RawCommand]?
     }
 

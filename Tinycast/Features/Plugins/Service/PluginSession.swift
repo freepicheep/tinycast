@@ -71,7 +71,8 @@ final class PluginSession {
             throw .internal(String(describing: error))
         }
         environment = .make(
-            plugin: manifest.name, command: command.name, storage: storage, services: services,
+            plugin: manifest.name, command: command.name, urlSchemes: manifest.urlSchemes,
+            storage: storage, services: services,
             onInvalidate: {})
         environment.setInvalidationHandler { [weak self] in self?.scheduleRender() }
 
@@ -85,6 +86,11 @@ final class PluginSession {
         } catch {
             throw .internal(String(describing: error))
         }
+    }
+
+    /// An `open` action's target, held to the same rule as the script's own `open` call.
+    func open(_ target: String) {
+        environment.open(target)
     }
 
     /// The host types every plugin's kit renders into; plugins see them only through the kit.

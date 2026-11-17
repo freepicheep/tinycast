@@ -80494,6 +80494,58 @@
         }
       }
     },
+    "No app on this Mac opens %@ links" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine App auf diesem Mac öffnet %@-Links"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna app de este Mac abre enlaces %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune app de ce Mac n’ouvre les liens %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Mac には %@ リンクを開けるアプリがありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac에는 %@ 링크를 여는 앱이 없습니다"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum app deste Mac abre links %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ни одно приложение на этом Mac не открывает ссылки %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 Mac 上没有可以打开 %@ 链接的 App"
+          }
+        }
+      }
+    },
     "No app yet" : {
       "localizations" : {
         "de" : {
@@ -90228,6 +90280,58 @@
         }
       }
     },
+    "Opens %@ links" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet %@-Links"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre enlaces %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre les liens %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ リンクを開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 링크 열기"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre links %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает ссылки %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 %@ 链接"
+          }
+        }
+      }
+    },
     "Opens Privacy & Security › Accessibility." : {
       "localizations" : {
         "de" : {
@@ -94082,58 +94186,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "插件是在 Tinycast 中运行的 Swift 脚本。每个插件只能看到 Tinycast 提供给它的内容——它自己的屏幕和存储空间,以及仅在请求时才有的网络或剪贴板——运行时间过长时会被停止。"
-          }
-        }
-      }
-    },
-    "Plugins can open web addresses and files" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plug-ins können Webadressen und Dateien öffnen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los plugins pueden abrir direcciones web y archivos"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les plug-ins peuvent ouvrir des adresses web et des fichiers"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "プラグインが開けるのは Web アドレスとファイルです"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "플러그인은 웹 주소와 파일을 열 수 있습니다"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os plug-ins podem abrir endereços web e arquivos"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Плагины могут открывать веб-адреса и файлы"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "插件可以打开网址和文件"
           }
         }
       }
@@ -127490,6 +127542,58 @@
         }
       }
     },
+    "This plugin can't open %@ links: plugin.json doesn't list them" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Plug-in kann keine %@-Links öffnen: plugin.json führt sie nicht auf"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este plugin no puede abrir enlaces %@: plugin.json no los incluye"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce plug-in ne peut pas ouvrir les liens %@ : plugin.json ne les mentionne pas"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このプラグインは %@ リンクを開けません:plugin.json に記載されていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 플러그인은 %@ 링크를 열 수 없습니다. plugin.json에 나열되어 있지 않습니다"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este plug-in não pode abrir links %@: o plugin.json não os inclui"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот плагин не может открывать ссылки %@: они не указаны в plugin.json"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此插件无法打开 %@ 链接:plugin.json 中未列出"
+          }
+        }
+      }
+    },
     "This quicklink was deleted. Copy your changes before closing." : {
       "localizations" : {
         "de" : {
@@ -142350,18 +142454,17 @@
       }
     },
     "plugins-installed-section" : {
-      "extractionState" : "extracted_with_value",
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Installed"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Installiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installed"
           }
         },
         "es" : {

@@ -8,7 +8,9 @@ protocol PluginHostServices: AnyObject {
     func closeWindow()
     func copy(_ text: String)
     func paste(_ text: String)
-    func open(_ target: String)
+    func open(_ url: URL)
+    /// A target the manifest doesn't allow; the plugin's own call, so the user hears why.
+    func refuseOpen(_ target: String)
 }
 
 /// The one host object a plugin's session holds. The kit keeps it in a global, so every call is
@@ -19,6 +21,7 @@ final class PluginEnvironment {
     private var name = ""
     private var command = ""
     private var storage: PluginStorage?
+    private var urlSchemes: Set<String> = []
     private weak var services: (any PluginHostServices)?
     private var onInvalidate: () -> Void = {}
 
@@ -34,7 +37,13 @@ final class PluginEnvironment {
     func closeWindow() { services?.closeWindow() }
     func copy(_ text: String) { services?.copy(text) }
     func paste(_ text: String) { services?.paste(text) }
-    func open(_ target: String) { services?.open(target) }
+    func open(_ target: String) {
+        guard let url = PluginOpenTarget.resolve(target, schemes: urlSchemes) else {
+            services?.refuseOpen(target)
+            return
+        }
+        services?.open(url)
+    }
 
     func storedValue(forKey key: String) -> String? { storage?.value(forKey: key) }
     func setStoredValue(_ value: String?, forKey key: String) {
@@ -44,13 +53,14 @@ final class PluginEnvironment {
 
 extension PluginEnvironment {
     static func make(
-        plugin: String, command: String, storage: PluginStorage,
+        plugin: String, command: String, urlSchemes: Set<String>, storage: PluginStorage,
         services: any PluginHostServices, onInvalidate: @escaping () -> Void
     ) -> PluginEnvironment {
         let environment = PluginEnvironment()
         environment.name = plugin
         environment.command = command
         environment.storage = storage
+        environment.urlSchemes = urlSchemes
         environment.services = services
         environment.onInvalidate = onInvalidate
         return environment

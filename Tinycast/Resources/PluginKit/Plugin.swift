@@ -59,6 +59,7 @@ var _stack: [_Entry] = []
 final class _Entry {
     let render: () -> [_Element]
     var task: Task<Void, Never>?
+    var taskKey: String?
 
     init(_ render: @escaping () -> [_Element]) {
         self.render = render
@@ -125,9 +126,12 @@ func _tinycastRender() -> PluginPage {
     return .list(_emptyList(elements))
 }
 
-func _start(_ task: (() async -> Void)?, in entry: _Entry) {
-    guard let task, entry.task == nil else { return }
-    entry.task = Task { await task() }
+func _start(_ task: _Task?, in entry: _Entry) {
+    guard let task, entry.taskKey != task.key else { return }
+    entry.task?.cancel()
+    entry.taskKey = task.key
+    let run = task.run
+    entry.task = Task { await run() }
 }
 
 /// A `body` of bare rows, with no `List` around them, still shows as one.

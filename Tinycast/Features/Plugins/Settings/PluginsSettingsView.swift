@@ -80,6 +80,10 @@ private struct PluginSettingsRow: View {
             let granted = manifest.permissions.map(\.title).sorted().formatted(.list(type: .and))
             parts.append(String(localized: "Uses \(granted)"))
         }
+        if !manifest.urlSchemes.isEmpty {
+            let schemes = manifest.urlSchemes.sorted().formatted(.list(type: .and))
+            parts.append(String(localized: "Opens \(schemes) links"))
+        }
         return parts.joined(separator: " · ")
     }
 }
