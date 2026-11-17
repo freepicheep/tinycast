@@ -387,6 +387,10 @@ final class PaletteWindowController: NSObject, NSWindowDelegate {
                 core.extensionCoordinator.exitExtensionScreen()
                 return true
             }
+            if core.palette.mode == .pluginCommand {
+                core.pluginCoordinator.exitPluginScreen()
+                return true
+            }
             if core.palette.mode == .ai, core.quickAICoordinator.removeLastAttachment() {
                 return true
             }

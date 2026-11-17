@@ -30,12 +30,15 @@ open Tinycast.xcodeproj    # then ⌘R
 Or from the command line:
 
 ```sh
-xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug build
+xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug -skipMacroValidation build
 ```
 
 `xcodebuild` uses whatever `xcode-select` points at; if that's the Command Line Tools rather than
 Xcode, prefix with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` (the SwiftUI
 `@State`/`@FocusState` macros need Xcode's macOS platform).
+
+`-skipMacroValidation` trusts Stir's `@StirExport` macro, which plugins use; in the IDE, Xcode asks
+once to trust the `StirMacros` package instead.
 
 `Tinycast.xcodeproj` is committed and generated from `project.yml` via XcodeGen — after changing
 project settings in `project.yml`, run `xcodegen generate` and commit the result. There is no
@@ -87,7 +90,7 @@ and the flag database:
 
 ```sh
 brew install xcode-build-server
-xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug \
+xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug -skipMacroValidation \
     -derivedDataPath build/DerivedData build 2>&1 | tee /tmp/tinycast-build.log
 ./Scripts/sync-lsp.sh /tmp/tinycast-build.log
 ```

@@ -472,6 +472,11 @@ final class AppSettings {
         didSet { defaults.set(extensionsEnabled, forKey: Key.extensionsEnabled.rawValue) }
     }
 
+    /// Consent to run plugins' Swift: it confirms, defaults off, rides no backup.
+    var pluginsEnabled: Bool {
+        didSet { defaults.set(pluginsEnabled, forKey: Key.pluginsEnabled.rawValue) }
+    }
+
     var extensionsShowInLauncher: Bool {
         didSet {
             defaults.set(extensionsShowInLauncher, forKey: Key.extensionsShowInLauncher.rawValue)
@@ -842,6 +847,7 @@ final class AppSettings {
             .flatMap(SnippetDefaultAction.init) ?? .paste
         // Opt-in, unlike its siblings: until it is asked for, nothing about extensions is loaded.
         extensionsEnabled = defaults.bool(forKey: Key.extensionsEnabled.rawValue)
+        pluginsEnabled = defaults.bool(forKey: Key.pluginsEnabled.rawValue)
         extensionsShowInLauncher =
             defaults.object(forKey: Key.extensionsShowInLauncher.rawValue) == nil
             || defaults.bool(forKey: Key.extensionsShowInLauncher.rawValue)

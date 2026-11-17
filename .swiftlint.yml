@@ -46,6 +46,8 @@ force_cast: warning
 
 type_name:
   min_length: 2     # `ID` is the correct name for an Identifiable's ID
+  # The plugin kit marks public types plugins never name with `_`, as SwiftUI does.
+  allowed_symbols: ["_"]
 
 line_length:
   warning: 130

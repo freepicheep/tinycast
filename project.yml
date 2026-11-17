@@ -7,6 +7,12 @@ options:
   developmentLanguage: en
   groupSortPosition: top
 
+# Stir runs plugins: Swift scripts, type-checked and sandboxed. docs/features/plugins.md
+packages:
+  Stir:
+    url: https://github.com/freepicheep/Stir.git
+    branch: tinycast-plugins
+
 settings:
   base:
     MARKETING_VERSION: "0.1.0"
@@ -48,13 +54,21 @@ targets:
           - Features/Dictation/Helper
           - Features/FileSearch/Helper
           - Resources/EmojiKeywords
+          - Resources/PluginKit
       # A folder reference keeps the packs in their own directory, which `EmojiIndex` lists.
       - path: Tinycast/Resources/EmojiKeywords
+        type: folder
+      # Swift source Stir compiles at run time, never the app's compiler: the kit plugins import.
+      - path: Tinycast/Resources/PluginKit
         type: folder
       # The MIT mark's licence asks the notice to travel with the binary, not just the repo.
       - path: NOTICE.md
         buildPhase: resources
     dependencies:
+      - package: Stir
+        product: Stir
+      - package: Stir
+        product: StirFoundation
       - target: DictationHelper
         link: false
         embed: false

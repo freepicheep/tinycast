@@ -1,0 +1,1 @@
+../../../../Tinycast/Features/Plugins/Service/PluginCapabilities.swift

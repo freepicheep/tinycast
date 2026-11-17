@@ -134,6 +134,8 @@ struct RootPaletteView: View {
         case .extensionCommand:
             return ExtensionCommandScreen(
                 screen: extensionScreen, extensions: extensions, vm: vm, openActions: openActions)
+        case .pluginCommand:
+            return PluginCommandScreen(plugins: core.plugins, vm: vm, openActions: openActions)
         }
     }
 
@@ -491,6 +493,7 @@ struct RootPaletteView: View {
                 if vm.mode != .extensionCommand, extensions.running != nil {
                     Task { await extensions.stop() }
                 }
+                if vm.mode != .pluginCommand, core.plugins.runningEntryID != nil { core.plugins.stop() }
             }
             // `prepare` may change nothing else, so this still lands the list as freshly opened.
             .onChange(of: vm.resetToken) {
@@ -641,6 +644,8 @@ struct RootPaletteView: View {
                     vm.query = ""
                 case .exitExtensionScreen:
                     core.extensionCoordinator.exitExtensionScreen()
+                case .exitPluginScreen:
+                    core.pluginCoordinator.exitPluginScreen()
                 case .goBack:
                     goBack()
                 case .collapsePalette:
@@ -664,6 +669,10 @@ struct RootPaletteView: View {
             .modifier(
                 ExtensionShortcutKeys(
                     screen: { menuOpen ? nil : screen as? ExtensionCommandScreen }, selection: sel)
+            )
+            .modifier(
+                PluginShortcutKeys(
+                    screen: { menuOpen ? nil : screen as? PluginCommandScreen }, selection: sel)
             )
             .onKeyPress(phases: .down) { press in
                 guard press.modifiers.contains(.command),
@@ -963,6 +972,11 @@ struct RootPaletteView: View {
         if headerAccessory?.placement == .afterQuery, vm.mode != .ai { return "" }
         if vm.mode == .extensionCommand, let placeholder = extensionScreen.searchPlaceholder {
             return placeholder
+        }
+        if vm.mode == .pluginCommand,
+            let prompt = PluginCommandScreen(plugins: core.plugins, vm: vm, openActions: {}).searchPrompt
+        {
+            return prompt
         }
         return vm.mode.placeholder
     }
@@ -1555,6 +1569,7 @@ struct RootPaletteView: View {
     /// An extension keeps its own stack, so it can have a step back the palette cannot see.
     private var hasBackStep: Bool {
         vm.canGoBack || (vm.mode == .extensionCommand && extensions.navigationDepth > 1)
+            || (vm.mode == .pluginCommand && core.plugins.navigationDepth > 1)
     }
 
     /// Never promises a step the click does not take: a root screen closes rather than backs.
@@ -1583,6 +1598,10 @@ struct RootPaletteView: View {
         }
         if vm.mode == .extensionCommand {
             core.extensionCoordinator.exitExtensionScreen()
+            return
+        }
+        if vm.mode == .pluginCommand {
+            core.pluginCoordinator.exitPluginScreen()
             return
         }
         if !vm.pop() { core.paletteCoordinator.hidePalette() }

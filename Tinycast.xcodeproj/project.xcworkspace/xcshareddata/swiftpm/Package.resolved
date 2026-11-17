@@ -1,0 +1,24 @@
+{
+  "originHash" : "9b02365e0fc7ed7782b90d44a32fe05d6e35d7f43eb82eafecdd9362df05a38a",
+  "pins" : [
+    {
+      "identity" : "stir",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/freepicheep/Stir.git",
+      "state" : {
+        "branch" : "tinycast-plugins",
+        "revision" : "71bd7decdbf9174ca00dbe72f0e6b2b8ec627305"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "050f1a346fbbac0ca2cfb15a95274f7bd1cf0ccf",
+        "version" : "604.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}

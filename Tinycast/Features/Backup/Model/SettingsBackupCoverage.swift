@@ -109,6 +109,8 @@ enum SettingsBackupCoverage {
             + "something else there.",
         AppSettingsKey.extensionsEnabled.rawValue:
             "Doubles as consent to run third-party JavaScript; an import must not switch it on.",
+        AppSettingsKey.pluginsEnabled.rawValue:
+            "Doubles as consent to run plugins' code; an import must not switch it on.",
         AppSettingsKey.allowedDeepLinks.rawValue:
             "Each entry lets a web page or app run a command unasked; an import must not grant that.",
         AppSettingsKey.palettePosition.rawValue:
