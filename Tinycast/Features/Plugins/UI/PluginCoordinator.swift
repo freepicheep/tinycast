@@ -135,7 +135,7 @@ final class PluginCoordinator: PluginHostServices {
     func refuseOpen(_ target: String) {
         let scheme = URL(string: target)?.scheme ?? target
         core.showMessage(
-            String(localized: "This plugin can't open \(scheme) links: plugin.json doesn't list them"),
+            String(localized: "This plugin can't open \(scheme) links: Manifest.swift doesn't list them"),
             tone: .danger)
     }
 }

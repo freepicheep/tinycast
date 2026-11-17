@@ -1,6 +1,6 @@
 import _TinycastHost
 
-/// Where a plugin's `main.swift` names its commands, by the names `plugin.json` gives them.
+/// Where a plugin's `main.swift` gives its commands their code, by the names `Manifest.swift` declares.
 public enum Plugin {
     /// A command that opens a screen: `Plugin.command("world-clock") { WorldClock() }`.
     public static func command<Content: View>(_ name: String, _ content: @escaping () -> Content) {
@@ -75,9 +75,9 @@ func _tinycastBegin(_ environment: PluginEnvironment) {
     _environment = environment
 }
 
-func _tinycastCommands() -> [String] {
-    Array(_views.keys) + Array(_actions.keys)
-}
+func _tinycastViewNames() -> [String] { Array(_views.keys) }
+
+func _tinycastActionNames() -> [String] { Array(_actions.keys) }
 
 /// False when `main.swift` registered no screen by that name.
 func _tinycastOpen(_ name: String) -> Bool {

@@ -1,2 +1,0 @@
-{ "name": "fixture", "title": "Fixture", "permissions": [],
-  "commands": [ { "name": "cities", "title": "Cities" }, { "name": "hello", "title": "Hello", "mode": "action" } ] }

@@ -1,5 +1,6 @@
 // swift-tools-version: 6.2
 // The plugin host against real Stir, which a lone swiftc harness can't link. Scripts/test-plugins.sh
+// runs its checks; Scripts/plugin-dump.sh runs `tinycast-plugin dump`, which prints a plugin's manifest.
 import PackageDescription
 
 let package = Package(
@@ -9,6 +10,13 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "PluginHostTests",
+            dependencies: [
+                .product(name: "Stir", package: "Stir"),
+                .product(name: "StirFoundation", package: "Stir")
+            ],
+            swiftSettings: [.swiftLanguageMode(.v6)]),
+        .executableTarget(
+            name: "tinycast-plugin",
             dependencies: [
                 .product(name: "Stir", package: "Stir"),
                 .product(name: "StirFoundation", package: "Stir")

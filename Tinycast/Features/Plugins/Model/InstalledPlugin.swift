@@ -52,7 +52,8 @@ struct PluginSources: Sendable {
         }
     }
 
-    /// Every `.swift` file under the folder, by path relative to it, in a stable order.
+    /// Every `.swift` file under the folder, by path relative to it, in a stable order; the
+    /// folder's own `Manifest.swift` isn't one, since it runs on its own before them.
     static func read(
         from directory: URL, requiringMain: Bool = true, fileManager: FileManager = .default
     ) throws(ReadError) -> PluginSources {
@@ -66,6 +67,11 @@ struct PluginSources: Sendable {
         for case let url as URL in enumerator where url.pathExtension == "swift" {
             guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true
             else { continue }
+            if url.lastPathComponent == PluginManifestReader.fileName,
+                url.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == root.path
+            {
+                continue
+            }
             urls.append(url)
             if urls.count > maximumFiles { throw .tooManyFiles }
         }

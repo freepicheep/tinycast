@@ -55,11 +55,15 @@ targets:
           - Features/FileSearch/Helper
           - Resources/EmojiKeywords
           - Resources/PluginKit
+          - Resources/PluginDescription
       # A folder reference keeps the packs in their own directory, which `EmojiIndex` lists.
       - path: Tinycast/Resources/EmojiKeywords
         type: folder
       # Swift source Stir compiles at run time, never the app's compiler: the kit plugins import.
       - path: Tinycast/Resources/PluginKit
+        type: folder
+      # What plugins' Manifest.swift imports, also compiled by Stir alone.
+      - path: Tinycast/Resources/PluginDescription
         type: folder
       # The MIT mark's licence asks the notice to travel with the binary, not just the repo.
       - path: NOTICE.md

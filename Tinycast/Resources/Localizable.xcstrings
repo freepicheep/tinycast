@@ -127542,54 +127542,54 @@
         }
       }
     },
-    "This plugin can't open %@ links: plugin.json doesn't list them" : {
+    "This plugin can't open %@ links: Manifest.swift doesn't list them" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieses Plug-in kann keine %@-Links öffnen: plugin.json führt sie nicht auf"
+            "value" : "Dieses Plug-in kann keine %@-Links öffnen: Manifest.swift führt sie nicht auf"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este plugin no puede abrir enlaces %@: plugin.json no los incluye"
+            "value" : "Este plugin no puede abrir enlaces %@: Manifest.swift no los incluye"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ce plug-in ne peut pas ouvrir les liens %@ : plugin.json ne les mentionne pas"
+            "value" : "Ce plug-in ne peut pas ouvrir les liens %@ : Manifest.swift ne les mentionne pas"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このプラグインは %@ リンクを開けません:plugin.json に記載されていません"
+            "value" : "このプラグインは %@ リンクを開けません:Manifest.swift に記載されていません"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 플러그인은 %@ 링크를 열 수 없습니다. plugin.json에 나열되어 있지 않습니다"
+            "value" : "이 플러그인은 %@ 링크를 열 수 없습니다. Manifest.swift에 나열되어 있지 않습니다"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este plug-in não pode abrir links %@: o plugin.json não os inclui"
+            "value" : "Este plug-in não pode abrir links %@: o Manifest.swift não os inclui"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Этот плагин не может открывать ссылки %@: они не указаны в plugin.json"
+            "value" : "Этот плагин не может открывать ссылки %@: они не указаны в Manifest.swift"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此插件无法打开 %@ 链接:plugin.json 中未列出"
+            "value" : "此插件无法打开 %@ 链接:Manifest.swift 中未列出"
           }
         }
       }

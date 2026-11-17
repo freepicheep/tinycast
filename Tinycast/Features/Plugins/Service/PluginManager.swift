@@ -57,9 +57,13 @@ final class PluginManager {
     func refresh() async {
         guard isEnabled else { return }
         let directory = PluginCatalog.pluginsDirectory()
+        let descriptionDirectory = PluginCatalog.descriptionDirectory()
         let found = await Task.detached(priority: .utility) {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            return PluginCatalog.scan(directory)
+            let description = descriptionDirectory.flatMap {
+                try? PluginSources.read(from: $0, requiringMain: false)
+            }
+            return PluginCatalog.scan(directory, description: description)
         }.value
         guard isEnabled, found != installed else { return }
         installed = found
@@ -67,6 +71,7 @@ final class PluginManager {
     }
 
     /// Adding or removing a plugin folder rescans; a plugin's code is read fresh on every launch.
+    /// An edited `Manifest.swift` is listed after Settings → Plugins → Reload, or a relaunch.
     private func watchDirectory() {
         let directory = PluginCatalog.pluginsDirectory()
         let descriptor = open(directory.path, O_EVTONLY)

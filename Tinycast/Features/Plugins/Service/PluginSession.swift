@@ -35,7 +35,8 @@ final class PluginSession {
     private var isClosed = false
     private let log: PluginOutput
 
-    /// Compiles and runs the kit and the plugin's `main.swift`, then opens or runs `command`.
+    /// Compiles and runs the kit and the plugin's `main.swift`, and checks that it registered just
+    /// the commands the manifest declares, each the kind it declares; `open` or `run` starts `command`.
     init(
         manifest: PluginManifest, command: PluginCommand, sources: PluginSources,
         kit kitSources: PluginSources, storage: PluginStorage, services: any PluginHostServices
@@ -78,14 +79,51 @@ final class PluginSession {
 
         do {
             try module.run(limits: limits)
+            let views = try kit.function("_tinycastViewNames", as: (() throws -> [String]).self, limits: limits)()
+            let actions = try kit.function(
+                "_tinycastActionNames", as: (() throws -> [String]).self, limits: limits)()
+            let problems = Self.registrationProblems(
+                declared: manifest.commands, views: Set(views), actions: Set(actions))
+            guard problems.isEmpty else { throw PluginSessionError.registrations(problems) }
             let begin = try kit.function(
                 "_tinycastBegin", as: ((PluginEnvironment) throws -> Void).self, limits: limits)
             try begin(environment)
+        } catch let error as PluginSessionError {
+            throw error
         } catch let panic as StirPanic {
             throw .panic(panic.description)
         } catch {
             throw .internal(String(describing: error))
         }
+    }
+
+    /// Every way `main.swift`'s registrations differ from the manifest's commands, one line each.
+    nonisolated static func registrationProblems(
+        declared: [PluginCommand], views: Set<String>, actions: Set<String>
+    ) -> [String] {
+        var problems: [String] = []
+        for command in declared {
+            let isView = views.contains(command.name)
+            let isAction = actions.contains(command.name)
+            switch (command.mode, isView, isAction) {
+            case (.view, true, _), (.action, _, true): continue
+            case (.view, false, true):
+                problems.append(
+                    "“\(command.name)” is a view in Manifest.swift, but main.swift registers it with Plugin.action")
+            case (.action, true, false):
+                problems.append(
+                    "“\(command.name)” is an action in Manifest.swift, but main.swift registers it with Plugin.command")
+            case (.view, false, false):
+                problems.append(PluginSessionError.unregistered(command.name, .view).description)
+            case (.action, false, false):
+                problems.append(PluginSessionError.unregistered(command.name, .action).description)
+            }
+        }
+        let names = Set(declared.map(\.name))
+        for name in views.union(actions).subtracting(names).sorted() {
+            problems.append("main.swift registers “\(name)”, which Manifest.swift doesn't declare")
+        }
+        return problems
     }
 
     /// An `open` action's target, held to the same rule as the script's own `open` call.
@@ -109,7 +147,7 @@ final class PluginSession {
         do {
             let open = try kit.function("_tinycastOpen", as: ((String) throws -> Bool).self, limits: Self.limits)
             guard try open(command.name) else {
-                return fail(PluginSessionError.unregistered(command.name).description)
+                return fail(PluginSessionError.unregistered(command.name, .view).description)
             }
         } catch {
             return fail(error)
@@ -124,7 +162,7 @@ final class PluginSession {
             let run = try kit.function(
                 "_tinycastRun", as: ((String) async throws -> Bool).self, limits: Self.limits)
             guard try await run(command.name) else {
-                return fail(PluginSessionError.unregistered(command.name).description)
+                return fail(PluginSessionError.unregistered(command.name, .action).description)
             }
             try await module.waitForTasks(limits: Self.limits)
             try await kit.waitForTasks(limits: Self.limits)
@@ -241,7 +279,9 @@ enum PluginSessionError: Error, CustomStringConvertible {
     case sources(String)
     case compile(String)
     case panic(String)
-    case unregistered(String)
+    case unregistered(String, PluginCommand.Mode)
+    /// `main.swift` and the manifest disagree about the commands.
+    case registrations([String])
     case kitMissing
     case `internal`(String)
 
@@ -250,8 +290,11 @@ enum PluginSessionError: Error, CustomStringConvertible {
         case .sources(let reason): reason
         case .compile(let diagnostics): diagnostics
         case .panic(let panic): "The plugin stopped: \(panic)"
-        case .unregistered(let name):
+        case .unregistered(let name, .view):
             "main.swift doesn't register “\(name)”: add Plugin.command(\"\(name)\") { … }"
+        case .unregistered(let name, .action):
+            "main.swift doesn't register “\(name)”: add Plugin.action(\"\(name)\") { … }"
+        case .registrations(let problems): problems.joined(separator: "\n")
         case .kitMissing: "The plugin kit is missing from the app bundle."
         case .internal(let reason): reason
         }

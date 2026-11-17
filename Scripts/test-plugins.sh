@@ -5,8 +5,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/../Tests/PluginHost"
 BUILD="${TMPDIR:-/tmp}/tinycast-plugin-host"
-swift build -c release --scratch-path "$BUILD" --product PluginHostTests > "$BUILD.log" 2>&1 || {
+swift build -c release --scratch-path "$BUILD" > "$BUILD.log" 2>&1 || {
     grep -E "error:" "$BUILD.log" | sort -u
     exit 1
 }
-exec "$BUILD/release/PluginHostTests"
+"$BUILD/release/PluginHostTests"
+# Every example must dump: its manifest runs and main.swift registers just what it declares.
+for example in ../../Examples/Plugins/*/; do
+    "$BUILD/release/tinycast-plugin" dump "$example" > /dev/null
+    echo "PASS  tinycast-plugin dump $(basename "$example")"
+done

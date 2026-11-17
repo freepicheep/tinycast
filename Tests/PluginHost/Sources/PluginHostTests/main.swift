@@ -30,6 +30,8 @@ let root = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPath
 let fixtures = root.appending(path: "Fixtures")
 let examples = root.appending(path: "../../Examples/Plugins").standardized
 let kitDirectory = root.appending(path: "../../Tinycast/Resources/PluginKit").standardized
+let descriptionDirectory = root.appending(path: "../../Tinycast/Resources/PluginDescription").standardized
+nonisolated(unsafe) var pluginDescription = PluginSources(files: [])
 
 /// A setup step that can't fail without every later check failing too, so it ends the run.
 @MainActor func must<T>(_ what: String, _ body: () throws -> T) -> T {
@@ -41,14 +43,40 @@ let kitDirectory = root.appending(path: "../../Tinycast/Resources/PluginKit").st
     }
 }
 
-@MainActor func manifest(_ json: String) -> PluginManifest {
-    must("decode a manifest") { try PluginManifest.decode(Data(json.utf8)) }
+/// A `Manifest.swift`'s text, run as the catalog runs it.
+@MainActor func evaluate(_ swift: String) -> Result<PluginManifest, PluginManifestError> {
+    PluginManifestReader.evaluate(swift, description: pluginDescription)
+}
+
+@MainActor func manifest(_ swift: String) -> PluginManifest {
+    must("run a manifest") { try evaluate(swift).get() }
+}
+
+/// The error a manifest fails with, or nil when it runs.
+@MainActor func manifestError(_ swift: String) -> PluginManifestError? {
+    if case .failure(let error) = evaluate(swift) { return error }
+    return nil
+}
+
+@MainActor func manifestText(_ folder: URL) -> String {
+    must("read \(folder.lastPathComponent)/Manifest.swift") {
+        try String(contentsOf: folder.appending(path: "Manifest.swift"), encoding: .utf8)
+    }
 }
 
 @MainActor func manifest(at name: String) -> PluginManifest {
-    must("read \(name)/plugin.json") {
-        try PluginManifest.decode(Data(contentsOf: fixtures.appending(path: "\(name)/plugin.json")))
-    }
+    manifest(manifestText(fixtures.appending(path: name)))
+}
+
+/// A one-command manifest around `arguments`, which go before `commands:`.
+func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String = #".view("x", title: "X")"#)
+    -> String
+{
+    """
+    import PluginDescription
+
+    let plugin = Plugin(\(arguments) commands: [\(commands)])
+    """
 }
 
 @MainActor func sources(_ name: String) -> PluginSources {
@@ -58,14 +86,9 @@ let kitDirectory = root.appending(path: "../../Tinycast/Resources/PluginKit").st
 }
 
 @MainActor func example(_ name: String) -> PluginManifest {
-    must("read the \(name) example") {
-        try PluginManifest.decode(Data(contentsOf: examples.appending(path: "\(name)/plugin.json")))
-    }
+    manifest(manifestText(examples.appending(path: name)))
 }
 
-@MainActor func decodes(_ json: String) -> Bool {
-    (try? PluginManifest.decode(Data(json.utf8))) != nil
-}
 
 /// A session for one of `manifest`'s commands, built from a fixture's sources.
 @MainActor func launch(
@@ -128,16 +151,103 @@ func scratchFile() -> URL {
 
 @MainActor func run() async {
     let kit = must("read the kit") { try PluginSources.read(from: kitDirectory, requiringMain: false) }
+    pluginDescription = must("read the plugin description") {
+        try PluginSources.read(from: descriptionDirectory, requiringMain: false)
+    }
 
-    // MARK: Manifest
+    // MARK: Manifest.swift
 
-    let command = #"[{"name":"x","title":"X"}]"#
-    check("a manifest without commands is refused", !decodes(#"{"name":"a","title":"A","commands":[]}"#))
+    let manifestStarted = ContinuousClock.now
+    _ = manifest(manifestText(examples.appending(path: "cleanshot-x")))
+    print("      CleanShot X manifest run \(ContinuousClock.now - manifestStarted)")
+    let warmManifest = ContinuousClock.now
+    _ = manifest(manifestText(examples.appending(path: "cleanshot-x")))
+    print("      and again \(ContinuousClock.now - warmManifest)")
+    let full = manifest(
+        plugin(
+            #"name: "a", title: "A", description: "D", icon: "star", author: "Me", "#
+                + #"permissions: [.network, .clipboard, .openURLs(schemes: ["cleanshot", "things"])],"#,
+            commands: #".view("x", title: "X", subtitle: "S", icon: "i", keywords: ["k"]), .action("y", title: "Y")"#))
+    check("a manifest runs", full.name == "a" && full.title == "A" && full.description == "D")
+    check("and keeps its icon and author", full.icon == "star" && full.author == "Me")
+    check("its permissions cross", full.permissions == [.network, .clipboard])
+    check("openURLs grants its schemes", full.urlSchemes == ["cleanshot", "things"])
+    check("commands keep their order and fields", full.commands.map(\.name) == ["x", "y"] && full.commands[0].keywords == ["k"])
+    check("view and action set the mode", full.commands.map(\.mode) == [.view, .action])
+    check("the JSON form reads back as the same manifest", (try? PluginManifest.decode(full.json())) == full)
     check(
-        "an unknown permission is refused",
-        !decodes(#"{"name":"a","title":"A","permissions":["camera"],"commands":\#(command)}"#))
-    check("a name with capitals is refused", !decodes(#"{"name":"World","title":"A","commands":\#(command)}"#))
-    check("a valid manifest decodes", decodes(#"{"name":"a","title":"A","commands":\#(command)}"#))
+        "an empty list or a missing value is left out of it",
+        !String(decoding: manifest(plugin()).json(), as: UTF8.self).contains("keywords"))
+    check("a manifest without commands is refused", manifestError(plugin(commands: "")) == .noCommands)
+    if case .compile(let diagnostics) = manifestError(plugin(#"name: "a", title: "A", permissions: [.camera],"#)) {
+        check("an unknown permission doesn't compile", diagnostics.contains("camera"))
+        check("and says where", diagnostics.contains("Manifest.swift:3"))
+    } else {
+        check("an unknown permission doesn't compile", false)
+    }
+    check("a name with capitals is refused", manifestError(plugin(#"name: "World", title: "A","#)) == .invalidName("World"))
+    check(
+        "a command declared twice is refused",
+        manifestError(plugin(commands: #".view("x", title: "X"), .action("x", title: "Y")"#)) == .duplicateCommand("x"))
+    check(
+        "a forbidden scheme is refused",
+        manifestError(plugin(#"name: "a", title: "A", permissions: [.openURLs(schemes: ["raycast"])],"#))
+            == .invalidURLScheme("raycast"))
+    check("a manifest that creates no Plugin says so", manifestError("import PluginDescription\n") == .noPlugin)
+    check(
+        "nor may it create two",
+        manifestError(plugin() + "\nlet other = Plugin(name: \"b\", title: \"B\", commands: [.view(\"x\", title: \"X\")])")
+            == .severalPlugins(2))
+    if case .panic = manifestError(plugin() + "\nwhile true {}") {
+        check("a manifest that never ends is stopped", true)
+    } else {
+        check("a manifest that never ends is stopped", false)
+    }
+    if case .compile = manifestError("import Foundation\nlet session = URLSession.shared\n" + plugin()) {
+        check("a manifest has no network, whatever it declares", true)
+    } else {
+        check("a manifest has no network, whatever it declares", false)
+    }
+    check("the manifest isn't one of the plugin's sources", !sources("cities").files.contains { $0.name == "Manifest.swift" })
+
+    // MARK: The catalog and its cache
+
+    let pluginsFolder = FileManager.default.temporaryDirectory.appending(path: "plugins-\(UUID())")
+    let cacheFolder = FileManager.default.temporaryDirectory.appending(path: "manifests-\(UUID())")
+    for name in ["cities", "gated"] {
+        must("copy \(name)") {
+            try FileManager.default.createDirectory(at: pluginsFolder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: fixtures.appending(path: name), to: pluginsFolder.appending(path: name))
+        }
+    }
+    let stale = cacheFolder.appending(path: "stale.json")
+    must("seed the cache") {
+        try FileManager.default.createDirectory(at: cacheFolder, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: stale)
+    }
+    let scanned = PluginCatalog.scan(pluginsFolder, description: pluginDescription, cache: cacheFolder)
+    check("the catalog lists each plugin by its manifest", scanned.map(\.id) == ["fixture", "gated"])
+    let entries = (try? FileManager.default.contentsOfDirectory(atPath: cacheFolder.path)) ?? []
+    check("and keeps what each declared", entries.count == 2 && entries.allSatisfy { $0.hasSuffix(".json") })
+    check("an entry no plugin uses is removed", !entries.contains("stale.json"))
+    let rescanned = PluginCatalog.scan(pluginsFolder, description: pluginDescription, cache: cacheFolder)
+    check("a rescan reads the cache to the same plugins", rescanned == scanned)
+    let gatedManifest = pluginsFolder.appending(path: "gated/Manifest.swift")
+    must("edit gated's manifest") {
+        try manifestText(pluginsFolder.appending(path: "gated"))
+            .replacingOccurrences(of: #"title: "Gated""#, with: #"title: "Gated Again""#)
+            .write(to: gatedManifest, atomically: true, encoding: .utf8)
+    }
+    let edited = PluginCatalog.scan(pluginsFolder, description: pluginDescription, cache: cacheFolder)
+    check("an edited manifest runs again", edited.last?.title == "Gated Again")
+    check("and its old entry goes", ((try? FileManager.default.contentsOfDirectory(atPath: cacheFolder.path)) ?? []).count == 2)
+    let unlisted = PluginCatalog.scan(pluginsFolder, description: nil, cache: cacheFolder)
+    check(
+        "without the description no plugin lists",
+        unlisted.allSatisfy { if case .failure(.descriptionMissing) = $0.manifest { true } else { false } })
+    check("and the cache is left alone", ((try? FileManager.default.contentsOfDirectory(atPath: cacheFolder.path)) ?? []).count == 2)
+    try? FileManager.default.removeItem(at: pluginsFolder)
+    try? FileManager.default.removeItem(at: cacheFolder)
     check("module names are Swift identifiers", InstalledPlugin.moduleName(for: "world-clock") == "WorldClock")
     check("a module name never shadows the kit", InstalledPlugin.moduleName(for: "tinycast") != "Tinycast")
 
@@ -205,10 +315,15 @@ func scratchFile() -> URL {
 
     // MARK: Failures stay inside the plugin
 
-    let unregistered = manifest(#"{"name":"fixture","title":"F","commands":[{"name":"missing","title":"M"}]}"#)
-    let lost = launch(unregistered, fixture: "cities", kit: kit, services: services)
-    await lost.open()
-    check("a command main.swift never registered says so", failure(lost)?.contains("missing") == true)
+    let unregistered = manifest(
+        plugin(#"name: "fixture", title: "F","#, commands: #".view("cities", title: "C"), .view("missing", title: "M")"#))
+    let lost = compileError(unregistered, "cities", kit: kit)
+    check("a command main.swift never registered says so", lost?.contains("doesn't register “missing”") == true)
+    check("as does one the manifest doesn't declare", lost?.contains("registers “hello”, which Manifest.swift doesn't") == true)
+    check(
+        "and a command registered as the wrong kind",
+        PluginSession.registrationProblems(
+            declared: unregistered.commands, views: ["missing"], actions: ["cities"]).first?.contains("Plugin.action") == true)
 
     let broken = manifest(at: "broken")
     let error = compileError(broken, "broken", kit: kit)
@@ -229,7 +344,7 @@ func scratchFile() -> URL {
     let denied = compileError(gated, "gated", kit: kit)
     check("without the network permission URLSession doesn't exist", denied?.contains("URLSession") == true)
     let granted = manifest(
-        #"{"name":"gated","title":"G","permissions":["network"],"commands":[{"name":"fetch","title":"F","mode":"action"}]}"#)
+        plugin(#"name: "gated", title: "G", permissions: [.network],"#, commands: #".action("fetch", title: "F")"#))
     check("with it the same plugin compiles", compileError(granted, "gated", kit: kit) == nil)
 
     // MARK: What open may reach
@@ -240,9 +355,6 @@ func scratchFile() -> URL {
     check("a declared one does", PluginOpenTarget.resolve("cleanshot://pin", schemes: ["cleanshot"]) != nil)
     check("no plugin may claim Tinycast's own links", !PluginOpenTarget.isOpenableScheme("tinycast"))
     check("or file URLs", !PluginOpenTarget.isOpenableScheme("FILE"))
-    check(
-        "a manifest naming a forbidden scheme is refused",
-        !decodes(#"{"name":"a","title":"A","urlSchemes":["raycast"],"commands":\#(command)}"#))
 
     // MARK: The CleanShot X example
 
@@ -267,10 +379,13 @@ func scratchFile() -> URL {
     }
     check("every CleanShot X command is registered and opens its link", true)
     let undeclared = manifest(
-        #"{"name":"cleanshot-x","title":"C","commands":[{"name":"capture-area","title":"C","mode":"action"}]}"#)
-    let refused = launch(undeclared, fixture: "cleanshot-x", kit: kit, services: shots)
+        manifestText(examples.appending(path: "cleanshot-x"))
+            .replacingOccurrences(of: #"permissions: [.openURLs(schemes: ["cleanshot"])],"#, with: ""))
+    check("the example without its grant has no schemes", undeclared.urlSchemes.isEmpty)
+    let areaIndex = undeclared.commands.firstIndex { $0.name == "capture-area" } ?? 0
+    let refused = launch(undeclared, command: areaIndex, fixture: "cleanshot-x", kit: kit, services: shots)
     await refused.run()
-    check("without urlSchemes the same plugin can't open them", shots.log.last == "refused: cleanshot://capture-area")
+    check("without openURLs the same plugin can't open them", shots.log.last == "refused: cleanshot://capture-area")
 
     // MARK: The Hacker News example, against the live API
 

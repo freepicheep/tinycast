@@ -1,6 +1,8 @@
 import Foundation
 
-/// A plugin's `plugin.json`: everything Tinycast lists before any of the plugin's code runs.
+/// What a plugin's `Manifest.swift` declares: everything Tinycast lists before any of the plugin's
+/// code runs. `PluginManifestReader` runs the manifest; its JSON form is what this type decodes and
+/// what `tinycast-plugin dump` prints.
 struct PluginManifest: Sendable, Hashable {
     let name: String
     let title: String
@@ -49,6 +51,12 @@ struct PluginCommand: Sendable, Hashable, Identifiable {
 
 enum PluginManifestError: Error, Hashable, CustomStringConvertible {
     case unreadable(String)
+    /// Stir's diagnostics, each with its line in `Manifest.swift`.
+    case compile(String)
+    case panic(String)
+    case noPlugin
+    case severalPlugins(Int)
+    case descriptionMissing
     case invalidName(String)
     case noCommands
     case duplicateCommand(String)
@@ -57,10 +65,15 @@ enum PluginManifestError: Error, Hashable, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case .unreadable(let reason): "plugin.json can't be read: \(reason)"
+        case .unreadable(let reason): "Manifest.swift can't be read: \(reason)"
+        case .compile(let diagnostics): diagnostics
+        case .panic(let panic): "Manifest.swift stopped: \(panic)"
+        case .noPlugin: "Manifest.swift creates no Plugin: add let plugin = Plugin(…)"
+        case .severalPlugins(let count): "Manifest.swift creates \(count) Plugins; a plugin has one"
+        case .descriptionMissing: "The plugin description is missing from the app bundle."
         case .invalidName(let name):
             "“\(name)” isn't a valid name; use lowercase letters, digits and hyphens"
-        case .noCommands: "plugin.json declares no commands"
+        case .noCommands: "Manifest.swift declares no commands"
         case .duplicateCommand(let name): "the command “\(name)” is declared twice"
         case .unknownPermission(let name): "“\(name)” isn't a permission Tinycast grants"
         case .invalidURLScheme(let scheme): "“\(scheme)” isn't a URL scheme a plugin may open"
@@ -69,7 +82,7 @@ enum PluginManifestError: Error, Hashable, CustomStringConvertible {
 }
 
 extension PluginManifest {
-    /// Strict, so a typo in a permission or mode is an error rather than a silently missing grant.
+    /// Strict, so a hand-edited cache entry can't grant what the manifest didn't declare.
     static func decode(_ data: Data) throws(PluginManifestError) -> PluginManifest {
         let raw: RawManifest
         do {
@@ -123,7 +136,24 @@ extension PluginManifest {
         }
     }
 
-    private struct RawManifest: Decodable {
+    /// Pretty and with sorted keys, so the same manifest always prints the same bytes.
+    func json() -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let raw = RawManifest(
+            name: name, title: title, description: description, icon: icon, author: author,
+            permissions: permissions.isEmpty ? nil : permissions.map(\.rawValue).sorted(),
+            urlSchemes: urlSchemes.isEmpty ? nil : urlSchemes.sorted(),
+            commands: commands.map {
+                RawCommand(
+                    name: $0.name, title: $0.title, subtitle: $0.subtitle, icon: $0.icon, mode: $0.mode,
+                    keywords: $0.keywords.isEmpty ? nil : $0.keywords)
+            })
+        // Strings, optionals and arrays of them can't fail to encode.
+        return (try? encoder.encode(raw)) ?? Data()
+    }
+
+    private struct RawManifest: Codable {
         let name: String
         let title: String
         let description: String?
@@ -134,7 +164,7 @@ extension PluginManifest {
         let commands: [RawCommand]?
     }
 
-    private struct RawCommand: Decodable {
+    private struct RawCommand: Codable {
         let name: String
         let title: String
         let subtitle: String?
