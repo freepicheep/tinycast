@@ -15,6 +15,7 @@ final class StirPluginRuntime: ExtensionCommandRuntime {
     private let kitSources: @MainActor () async -> PluginSources?
     private let storage: ExtensionStorage
     private let hostAPI: ExtensionHostAPI
+    private let appScheme: String
     private weak var delegate: ExtensionRuntimeDelegate?
 
     private var session: String?
@@ -41,8 +42,9 @@ final class StirPluginRuntime: ExtensionCommandRuntime {
 
     init(
         plugin: PluginManifest, directory: URL, storage: ExtensionStorage, hostAPI: ExtensionHostAPI,
-        kitSources: @escaping @MainActor () async -> PluginSources?
+        appScheme: String, kitSources: @escaping @MainActor () async -> PluginSources?
     ) {
+        self.appScheme = appScheme
         self.plugin = plugin
         self.directory = directory
         self.storage = storage
@@ -102,7 +104,7 @@ final class StirPluginRuntime: ExtensionCommandRuntime {
         return try Self.catching { () throws -> Loaded in
             let environment = PluginEnvironment.make(
                 plugin: plugin, command: command.name, storage: storage, hostAPI: hostAPI,
-                onInvalidate: { [weak self] in self?.scheduleRender() },
+                appScheme: appScheme, onInvalidate: { [weak self] in self?.scheduleRender() },
                 onError: { [weak self] in self?.fail($0) })
             let kit = compiled.kit
             let begin = try kit.function(

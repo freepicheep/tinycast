@@ -84,7 +84,8 @@ func outline(_ node: RenderNode, depth: Int = 0) -> [String] {
     let storage = ExtensionStorage(
         directory: FileManager.default.temporaryDirectory.appending(path: "tinycast-plugin-\(UUID())"))
     let runtime = StirPluginRuntime(
-        plugin: manifest, directory: folder, storage: storage, hostAPI: PrintingHost(), kitSources: { kit })
+        plugin: manifest, directory: folder, storage: storage, hostAPI: PrintingHost(), appScheme: "tinycast",
+        kitSources: { kit })
     let outcome = Outcome()
     runtime.setDelegate(outcome)
     let context = ExtensionLaunchContext(

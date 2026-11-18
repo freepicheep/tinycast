@@ -9,10 +9,31 @@ final class TestHost: ExtensionHostAPI {
     var log: [String] = []
     var answers: [String: String] = ["feedback.showToast": "7", "feedback.confirmAlert": "true"]
 
+    /// A provider's tokens as the host keeps them, by provider id.
+    var tokens: [String: String] = [:]
+    /// What the provider's redirect adds besides the request's state; `code` unless a test says.
+    var redirectQuery = "code=granted"
+
     func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
         let shown = arguments.map { $0.stringValue ?? ExtensionJSON.string(from: $0.jsonValue) }
         log.append(([api + "." + method] + shown).joined(separator: " "))
-        return answers[api + "." + method] ?? ""
+        switch (api, method) {
+        case ("oauth", "authorize"):
+            // The provider sends the user back to the request's redirect, with its state.
+            let request = URLComponents(string: arguments[0].stringValue ?? "")
+            let items = request?.queryItems ?? []
+            let redirect = items.first { $0.name == "redirect_uri" }?.value ?? ""
+            let state = items.first { $0.name == "state" }?.value ?? ""
+            let separator = redirect.contains("?") ? "&" : "?"
+            return redirect + separator + redirectQuery + "&state=" + state
+        case ("oauth", "setTokens"):
+            tokens[arguments[0].stringValue ?? ""] = arguments[1].stringValue
+            return ""
+        case ("oauth", "getTokens"):
+            return tokens[arguments[0].stringValue ?? ""] ?? ""
+        default:
+            return answers[api + "." + method] ?? ""
+        }
     }
 
     func sessionEnded() {}
@@ -193,7 +214,8 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
     launchContext: [String: RenderValue] = [:]
 ) async throws -> Run {
     let runtime = StirPluginRuntime(
-        plugin: manifest, directory: folder(fixture), storage: storage, hostAPI: host, kitSources: { kit })
+        plugin: manifest, directory: folder(fixture), storage: storage, hostAPI: host, appScheme: "tinycast",
+        kitSources: { kit })
     let run = Run(runtime: runtime, host: host)
     guard let extensionManifest = manifest.extensionManifest(),
         let declared = extensionManifest.commands.first(where: { $0.name == command })
@@ -345,7 +367,7 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
     let kitchen = manifest(at: "kitchen")
     let host = kitchen.extensionManifest()
     check("a plugin joins the host under a dotted name", host?.name == "plugin.kitchen")
-    check("its commands keep their modes", host?.commands.map(\.mode) == [.view, .view, .menuBar, .noView, .noView])
+    check("its commands keep their modes", host?.commands.map(\.mode) == [.view, .view, .menuBar, .noView, .noView, .noView])
     check("a menu bar interval crosses", host?.commands[2].interval != nil)
     check("arguments cross", host?.commands[0].arguments.map(\.name) == ["subject"])
     check("and the plugin's preferences", host?.preferences.map(\.name) == ["greeting", "loud"])
@@ -528,6 +550,36 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
         kitchen, "note", fixture: "kitchen", arguments: ["subject": "From hop"], launchContext: ["origin": .string("hop")])
     check("a launch context reaches the command", hopped.root?.string("navigationTitle") == "Note from hop")
     await hopped.stop()
+
+    // MARK: OAuth
+
+    let signIn = await started(kitchen, "sign-in", fixture: "kitchen")
+    await until { signIn.recorder.finished || signIn.recorder.failure != nil }
+    try? await Task.sleep(for: .milliseconds(20))
+    check("a sign-in runs to its end", signIn.recorder.finished && signIn.recorder.failure == nil)
+    let authorize = signIn.host.log.first { $0.hasPrefix("oauth.authorize") } ?? ""
+    let query = URLComponents(string: String(authorize.dropFirst("oauth.authorize ".count)).components(separatedBy: " ").first ?? "")?
+        .queryItems ?? []
+    func item(_ name: String) -> String? { query.first { $0.name == name }?.value }
+    check("the request goes to the provider's endpoint", authorize.contains("https://auth.example.com/authorize?"))
+    check(
+        "with PKCE's S256 challenge and the plugin's redirect",
+        item("code_challenge_method") == "S256" && (item("code_challenge")?.count ?? 0) == 43
+            && item("redirect_uri") == "tinycast://oauth?plugin=kitchen" && item("client_id") == "kitchen-client"
+            && item("prompt") == "consent")
+    check("and waits for Tinycast's scheme", authorize.hasSuffix(" tinycast"))
+    check("the code comes back and the tokens are kept under the provider", signIn.host.tokens["Example"]?.contains("token-for-granted") == true)
+    check("they read back, not yet expired", signIn.host.saw("feedback.showHUD token-for-granted fresh"))
+    let mismatched = TestHost()
+    mismatched.redirectQuery = "code=granted&state=forged"
+    let forged = await started(kitchen, "sign-in", fixture: "kitchen", host: mismatched)
+    await until { forged.recorder.finished || forged.recorder.failure != nil }
+    check("a redirect with another state is refused", forged.recorder.failure?.contains("mismatched state") == true)
+    let refusedHost = TestHost()
+    refusedHost.redirectQuery = "error=access_denied&error_description=The+user+said+no"
+    let refusedSignIn = await started(kitchen, "sign-in", fixture: "kitchen", host: refusedHost)
+    await until { refusedSignIn.recorder.finished || refusedSignIn.recorder.failure != nil }
+    check("the provider's error reaches the plugin", refusedSignIn.recorder.failure?.contains("The user said no") == true)
 
     // MARK: Failures stay inside the plugin
 

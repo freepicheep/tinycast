@@ -21,3 +21,14 @@ Plugin.action("toast") {
 Plugin.action("hop") {
     try await launchCommand("note", arguments: ["subject": "From hop"], context: ["origin": .string("hop")])
 }
+
+Plugin.action("sign-in") {
+    let client = OAuth.PKCEClient(providerName: "Example")
+    let request = try client.authorizationRequest(
+        endpoint: "https://auth.example.com/authorize", clientID: "kitchen-client", scope: "read",
+        extraParameters: ["prompt": "consent"])
+    let code = try await client.authorize(request)
+    try await client.setTokens(accessToken: "token-for-\(code)", refreshToken: "refresh", expiresIn: 3600)
+    guard let tokens = try await client.getTokens() else { return }
+    showHUD("\(tokens.accessToken) \(tokens.isExpired ? "expired" : "fresh")")
+}

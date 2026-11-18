@@ -20,7 +20,8 @@ enum PluginCapabilities {
         StirHostModule(
             "_TinycastHost",
             exports: [
-                PluginNode.self, PluginValue.self, PluginLaunch.self, PluginEnvironment.self,
+                PluginNode.self, PluginValue.self, PluginLaunch.self, PluginEnvironment.self, PluginOAuthRequest.self,
+                PluginOAuthTokens.self,
                 PluginApplication.self
             ])
     }

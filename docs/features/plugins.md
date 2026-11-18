@@ -222,6 +222,15 @@ with Raycast's `arguments`, `launchType` and `context` query items; Copy Deeplin
 link. Raycast's schemes never reach a plugin. Hotkeys and deep links run a plugin's command whether
 or not Raycast extensions are switched on.
 
+`OAuth.PKCEClient` signs in with OAuth 2.0 and PKCE as Raycast's does. `authorizationRequest`
+builds the URL natively (a `SecRandomCopyBytes` verifier, its S256 challenge, a state nonce), with
+Tinycast's own redirect `tinycast://oauth?plugin=<name>` unless the plugin names a custom one.
+`authorize` runs the host's browser sign-in, checks the returned state and gives back the code; the
+provider's `error_description` becomes the thrown error. Tokens are kept per provider in the
+plugin's storage (`setTokens`, `getTokens` with `isExpired`, `removeTokens`). The token exchange is
+the plugin's own `URLSession` request, under the `network` permission. Sign-in is refused in a
+background run.
+
 Settings › Plugins opens each plugin to the same card as an extension's: show in launcher, launcher
 icon, preferences, and per command its alias, hotkey, visibility, menu bar toggle and background
 refresh. "Configure Plugin" in the launcher opens that card; "Show in Finder" replaces uninstall.

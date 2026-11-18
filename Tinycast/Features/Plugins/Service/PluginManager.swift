@@ -67,7 +67,7 @@ final class PluginManager {
         { [weak self] owner, hostAPI, _ in
             StirPluginRuntime(
                 plugin: self?.manifest(hostName: owner.manifest.name) ?? .missing(owner.manifest.name),
-                directory: owner.directory, storage: storage, hostAPI: hostAPI,
+                directory: owner.directory, storage: storage, hostAPI: hostAPI, appScheme: AppURLScheme.current,
                 kitSources: { [weak self] in await self?.kitSources() })
         }
     }

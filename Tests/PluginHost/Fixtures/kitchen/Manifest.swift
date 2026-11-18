@@ -13,5 +13,6 @@ let plugin = Plugin(
         .menuBar("status", title: "Status", interval: "1m"),
         .action("toast", title: "Toast"),
         .action("hop", title: "Hop"),
+        .action("sign-in", title: "Sign In"),
     ]
 )

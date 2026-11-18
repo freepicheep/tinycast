@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import Security
 import Stir
 
 /// The one host object a plugin's session holds. The kit keeps it in a global, so every call is
@@ -11,6 +13,8 @@ final class PluginEnvironment {
     private var name = ""
     private var command = ""
     private var urlSchemes: Set<String> = []
+    /// Tinycast's own scheme (`tinycast`, or `tinycast-dev` in Debug), where an OAuth sign-in returns.
+    private var appScheme = "tinycast"
     private var storage: ExtensionStorage?
     private var hostAPI: ExtensionHostAPI?
     private var onInvalidate: () -> Void = {}
@@ -210,6 +214,102 @@ final class PluginEnvironment {
         return PluginApplication(RenderValue(json: Self.object(json)))
     }
 
+    // MARK: - OAuth: PKCE runs here, natively; the host runs the browser sign-in and keeps the tokens
+
+    /// The URL that starts a sign-in, with a fresh verifier, its S256 challenge and a state nonce.
+    /// `redirectURI` nil means Tinycast's own `<scheme>://oauth?plugin=<name>`.
+    func oauthRequest(
+        endpoint: String, clientID: String, scope: String, extraParameters: [String: String],
+        redirectURI: String?
+    ) throws -> PluginOAuthRequest {
+        guard var components = URLComponents(string: endpoint), components.scheme == "https" else {
+            throw PluginOAuthError.invalidEndpoint(endpoint)
+        }
+        let verifier = Self.randomURLSafe(32)
+        let challenge = Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
+        let state = Self.randomURLSafe(16)
+        let redirect = redirectURI ?? "\(appScheme)://oauth?plugin=\(name.dropFirst(PluginManifest.hostNamePrefix.count))"
+        var items = [
+            URLQueryItem(name: "response_type", value: "code"), URLQueryItem(name: "client_id", value: clientID),
+            URLQueryItem(name: "redirect_uri", value: redirect), URLQueryItem(name: "scope", value: scope),
+            URLQueryItem(name: "state", value: state), URLQueryItem(name: "code_challenge", value: challenge),
+            URLQueryItem(name: "code_challenge_method", value: "S256")
+        ]
+        for (key, value) in extraParameters.sorted(by: { $0.key < $1.key }) {
+            items.removeAll { $0.name == key }
+            items.append(URLQueryItem(name: key, value: value))
+        }
+        components.queryItems = (components.queryItems ?? []) + items
+        guard let url = components.url else { throw PluginOAuthError.invalidEndpoint(endpoint) }
+        return PluginOAuthRequest(
+            url: url.absoluteString, codeVerifier: verifier, codeChallenge: challenge, state: state,
+            redirectURI: redirect)
+    }
+
+    /// Opens the sign-in and waits for the redirect to `redirectURI`'s scheme; the authorization
+    /// code, once the redirect's state matches the request's.
+    func oauthAuthorize(_ request: PluginOAuthRequest, providerName: String) async throws -> String {
+        guard let scheme = URL(string: request.redirectURI)?.scheme else {
+            throw PluginOAuthError.invalidRedirect(request.redirectURI)
+        }
+        let redirect = try await perform("oauth", "authorize", [.string(request.url), .string(scheme)])
+        // A redirect's query is form-encoded (RFC 6749 §4.1.2): `+` is a space, as `URLSearchParams` reads it.
+        var components = URLComponents(string: redirect)
+        let query = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%20")
+        components?.percentEncodedQuery = query
+        let items = components?.queryItems ?? []
+        func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
+        if let error = value("error") { throw PluginOAuthError.provider(value("error_description") ?? error) }
+        let states = items.filter { $0.name == "state" }.map(\.value)
+        guard states == [request.state] else { throw PluginOAuthError.mismatchedState(providerName) }
+        guard let code = value("code"), !code.isEmpty else { throw PluginOAuthError.noCode(providerName) }
+        return code
+    }
+
+    /// Stored in the shape Raycast's `setTokens` keeps, under the plugin's host name.
+    func setOAuthTokens(
+        provider: String, accessToken: String, refreshToken: String?, idToken: String?, expiresIn: Double?,
+        scope: String?
+    ) async throws {
+        var tokens: [String: Any] = [
+            "accessToken": accessToken, "updatedAt": ISO8601DateFormatter().string(from: Date())
+        ]
+        tokens["refreshToken"] = refreshToken
+        tokens["idToken"] = idToken
+        tokens["expiresIn"] = expiresIn
+        tokens["scope"] = scope
+        _ = try await perform("oauth", "setTokens", [.string(provider), .string(ExtensionJSON.string(from: tokens))])
+    }
+
+    func oauthTokens(provider: String) async throws -> PluginOAuthTokens? {
+        let stored = try await perform("oauth", "getTokens", [.string(provider)])
+        guard let data = stored.data(using: .utf8), !data.isEmpty,
+            let fields = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let accessToken = fields["accessToken"] as? String
+        else { return nil }
+        let updatedAt = (fields["updatedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
+        return PluginOAuthTokens(
+            accessToken: accessToken, refreshToken: fields["refreshToken"] as? String,
+            idToken: fields["idToken"] as? String, expiresIn: fields["expiresIn"] as? Double,
+            scope: fields["scope"] as? String, updatedAt: updatedAt.timeIntervalSince1970)
+    }
+
+    func removeOAuthTokens(provider: String) async throws {
+        _ = try await perform("oauth", "setTokens", [.string(provider), .null])
+    }
+
+    private static func randomURLSafe(_ count: Int) -> String {
+        var bytes = [UInt8](repeating: 0, count: count)
+        let status = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
+        precondition(status == errSecSuccess, "the system's random generator failed")
+        return base64URL(Data(bytes))
+    }
+
+    private static func base64URL(_ data: Data) -> String {
+        data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
     // MARK: - Plumbing
 
     private func toastPayload(
@@ -262,6 +362,49 @@ final class PluginEnvironment {
     }
 }
 
+/// A sign-in about to start: what `OAuth.PKCEClient.authorizationRequest` returns.
+@StirExport
+struct PluginOAuthRequest {
+    var url: String
+    var codeVerifier: String
+    var codeChallenge: String
+    var state: String
+    var redirectURI: String
+}
+
+/// A provider's stored tokens; `updatedAt` in seconds since 1970.
+@StirExport
+struct PluginOAuthTokens {
+    var accessToken: String
+    var refreshToken: String?
+    var idToken: String?
+    var expiresIn: Double?
+    var scope: String?
+    var updatedAt: Double
+}
+
+/// Described by its message: a plugin sees a host error as its descriptions, not its type.
+enum PluginOAuthError: LocalizedError, CustomStringConvertible, CustomDebugStringConvertible {
+    case invalidEndpoint(String)
+    case invalidRedirect(String)
+    case provider(String)
+    case mismatchedState(String)
+    case noCode(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidEndpoint(let endpoint): "An OAuth endpoint must be an https URL, not \(endpoint)."
+        case .invalidRedirect(let uri): "\(uri) isn't a redirect URI an app can receive."
+        case .provider(let message): message
+        case .mismatchedState(let provider): "\(provider) sign-in returned a mismatched state."
+        case .noCode(let provider): "\(provider) sign-in returned no authorization code."
+        }
+    }
+
+    var description: String { errorDescription ?? "" }
+    var debugDescription: String { description }
+}
+
 /// An application as `getApplications` describes it.
 @StirExport
 struct PluginApplication {
@@ -282,9 +425,10 @@ extension PluginApplication {
 extension PluginEnvironment {
     static func make(
         plugin: PluginManifest, command: String, storage: ExtensionStorage, hostAPI: ExtensionHostAPI,
-        onInvalidate: @escaping () -> Void, onError: @escaping (any Error) -> Void
+        appScheme: String, onInvalidate: @escaping () -> Void, onError: @escaping (any Error) -> Void
     ) -> PluginEnvironment {
         let environment = PluginEnvironment()
+        environment.appScheme = appScheme
         environment.name = plugin.hostName
         environment.command = command
         environment.urlSchemes = plugin.urlSchemes
