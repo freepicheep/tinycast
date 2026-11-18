@@ -1,24 +1,6 @@
 import Foundation
 import JavaScriptCore
 
-/// The JS→Swift seam. Answers are JSON, so nothing non-`Sendable` crosses back to the JS queue.
-@MainActor
-protocol ExtensionHostAPI: AnyObject, Sendable {
-    func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String
-    /// The context is gone; release anything opened on its behalf.
-    func sessionEnded()
-}
-
-/// Where a running command's UI or failure lands. Every callback arrives on the main actor.
-@MainActor
-protocol ExtensionRuntimeDelegate: AnyObject {
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree)
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String)
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int)
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void)
-    func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String)
-}
-
 /// The one `JSContext` a command runs in; every touch is on `queue`, only values cross.
 final class ExtensionRuntime: @unchecked Sendable {
     private let queue: DispatchQueue
@@ -369,23 +351,6 @@ final class ExtensionRuntime: @unchecked Sendable {
         let message = exception.toString() ?? "JavaScript error"
         if let stack, !stack.isEmpty, stack != "undefined" { return "\(message)\n\(stack)" }
         return message
-    }
-
-    static func jsonArray(from json: String) -> [Any] {
-        guard let data = json.data(using: .utf8),
-            let array = try? JSONSerialization.jsonObject(with: data) as? [Any]
-        else { return [] }
-        return array
-    }
-
-    /// Fragment-tolerant encoding: host results are frequently bare strings, numbers or nil.
-    static func jsonString(from value: Any?) -> String {
-        guard let value, !(value is NSNull) else { return "" }
-        guard
-            let data = try? JSONSerialization.data(
-                withJSONObject: value, options: [.fragmentsAllowed])
-        else { return "" }
-        return String(decoding: data, as: UTF8.self)
     }
 }
 

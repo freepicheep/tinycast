@@ -1,17 +1,109 @@
 import Foundation
 import Stir
 
-// Drives plugin sessions the way the palette does, with the kit and fixtures from this repo.
+// Drives plugin commands the way the Extensions host does — launch, render, dispatch, pop — with
+// the kit and fixtures from this repo, against a host that records every call.
 
 @MainActor
-final class Services: PluginHostServices {
+final class TestHost: ExtensionHostAPI {
     var log: [String] = []
-    func showHUD(_ text: String) { log.append("hud: \(text)") }
-    func closeWindow() { log.append("close") }
-    func copy(_ text: String) { log.append("copy: \(text)") }
-    func paste(_ text: String) { log.append("paste: \(text)") }
-    func open(_ url: URL) { log.append("open: \(url.absoluteString)") }
-    func refuseOpen(_ target: String) { log.append("refused: \(target)") }
+    var answers: [String: String] = ["feedback.showToast": "7", "feedback.confirmAlert": "true"]
+
+    func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
+        let shown = arguments.map { $0.stringValue ?? ExtensionJSON.string(from: $0.jsonValue) }
+        log.append(([api + "." + method] + shown).joined(separator: " "))
+        return answers[api + "." + method] ?? ""
+    }
+
+    func sessionEnded() {}
+
+    func saw(_ prefix: String) -> Bool { log.contains { $0.hasPrefix(prefix) } }
+}
+
+/// What the runtime told the host, as the palette would have drawn it.
+@MainActor
+final class Recorder: ExtensionRuntimeDelegate {
+    var tree: RenderTree?
+    var failure: String?
+    var finished = false
+    var renders = 0
+
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree) {
+        self.tree = tree
+        renders += 1
+    }
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String) {
+        failure = message
+    }
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int) {}
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) {
+        finished = true
+    }
+    func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {}
+}
+
+/// One launched command.
+@MainActor
+final class Run {
+    let runtime: StirPluginRuntime
+    let recorder = Recorder()
+    let host: TestHost
+    let session = "s"
+
+    init(runtime: StirPluginRuntime, host: TestHost) {
+        self.runtime = runtime
+        self.host = host
+        runtime.setDelegate(recorder)
+    }
+
+    var root: RenderNode? { recorder.tree?.activeRoot }
+    var depth: Int { recorder.tree?.depth ?? 0 }
+
+    /// The first node of `type` in the screen, by `title` when given.
+    func find(_ type: String, _ title: String? = nil) -> RenderNode? {
+        root.flatMap { Self.find(type, title, in: $0) }
+    }
+
+    static func find(_ type: String, _ title: String?, in node: RenderNode) -> RenderNode? {
+        if node.type == type, title == nil || node.string("title") == title { return node }
+        for child in node.children {
+            if let hit = find(type, title, in: child) { return hit }
+        }
+        for value in node.props.values {
+            for nested in value.nodesValue {
+                if let hit = find(type, title, in: nested) { return hit }
+            }
+        }
+        return nil
+    }
+
+    func all(_ type: String) -> [RenderNode] {
+        var found: [RenderNode] = []
+        func walk(_ node: RenderNode) {
+            if node.type == type { found.append(node) }
+            node.children.forEach(walk)
+        }
+        root.map(walk)
+        return found
+    }
+
+    /// Runs a handler prop the way the palette does, with JSON arguments.
+    func fire(_ node: RenderNode?, _ prop: String = "onAction", _ arguments: [Any] = []) async {
+        guard let id = node?.handler(prop) else {
+            print("      (no \(prop) handler on \(node?.type ?? "nothing"))")
+            return
+        }
+        await runtime.dispatch(
+            session: session, handler: id, payload: ExtensionJSON.string(from: arguments), completesSession: false)
+    }
+
+    /// The action titled `title` in a node's action panel.
+    func action(_ title: String, of node: RenderNode?) -> RenderNode? {
+        guard let panel = node?.node("actions") else { return nil }
+        return Self.find("Action", title, in: panel)
+    }
+
+    func stop() async { await runtime.stop(session: session) }
 }
 
 nonisolated(unsafe) var failures = 0
@@ -32,6 +124,7 @@ let examples = root.appending(path: "../../Examples/Plugins").standardized
 let kitDirectory = root.appending(path: "../../Tinycast/Resources/PluginKit").standardized
 let descriptionDirectory = root.appending(path: "../../Tinycast/Resources/PluginDescription").standardized
 nonisolated(unsafe) var pluginDescription = PluginSources(files: [])
+nonisolated(unsafe) var kit = PluginSources(files: [])
 
 /// A setup step that can't fail without every later check failing too, so it ends the run.
 @MainActor func must<T>(_ what: String, _ body: () throws -> T) -> T {
@@ -64,8 +157,13 @@ nonisolated(unsafe) var pluginDescription = PluginSources(files: [])
     }
 }
 
+func folder(_ name: String) -> URL {
+    FileManager.default.fileExists(atPath: fixtures.appending(path: name).path)
+        ? fixtures.appending(path: name) : examples.appending(path: name)
+}
+
 @MainActor func manifest(at name: String) -> PluginManifest {
-    manifest(manifestText(fixtures.appending(path: name)))
+    manifest(manifestText(folder(name)))
 }
 
 /// A one-command manifest around `arguments`, which go before `commands:`.
@@ -80,68 +178,59 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
 }
 
 @MainActor func sources(_ name: String) -> PluginSources {
-    let folder = FileManager.default.fileExists(atPath: fixtures.appending(path: name).path)
-        ? fixtures.appending(path: name) : examples.appending(path: name)
-    return must("read \(name)'s sources") { try PluginSources.read(from: folder) }
+    must("read \(name)'s sources") { try PluginSources.read(from: folder(name)) }
 }
 
-@MainActor func example(_ name: String) -> PluginManifest {
-    manifest(manifestText(examples.appending(path: name)))
+@MainActor func freshStorage() -> ExtensionStorage {
+    ExtensionStorage(directory: FileManager.default.temporaryDirectory.appending(path: "plugin-storage-\(UUID())"))
 }
 
-
-/// A session for one of `manifest`'s commands, built from a fixture's sources.
+/// Launches one of `manifest`'s commands from the plugin in `fixture` (its folder name).
 @MainActor func launch(
-    _ manifest: PluginManifest, command: Int = 0, fixture: String, kit: PluginSources,
-    storage: PluginStorage = freshStorage(), services: Services = Services()
-) -> PluginSession {
-    must("load \(fixture)") {
-        try PluginSession(
-            manifest: manifest, command: manifest.commands[command], sources: sources(fixture), kit: kit,
-            storage: storage, services: services)
-    }
+    _ manifest: PluginManifest, _ command: String, fixture: String, storage: ExtensionStorage = freshStorage(),
+    host: TestHost = TestHost(), arguments: [String: String] = [:],
+    preferences: [String: ExtensionPreferenceValue] = [:], launchType: ExtensionLaunchType = .userInitiated,
+    launchContext: [String: RenderValue] = [:]
+) async throws -> Run {
+    let runtime = StirPluginRuntime(
+        plugin: manifest, directory: folder(fixture), storage: storage, hostAPI: host, kitSources: { kit })
+    let run = Run(runtime: runtime, host: host)
+    guard let extensionManifest = manifest.extensionManifest(),
+        let declared = extensionManifest.commands.first(where: { $0.name == command })
+    else { throw PluginSessionError.internal("no command \(command)") }
+    let owner = InstalledExtension(manifest: extensionManifest, directory: folder(fixture), engine: .plugin)
+    let context = ExtensionLaunchContext(
+        extensionName: manifest.hostName, extensionTitle: manifest.title, commandName: command,
+        commandMode: declared.mode, assetsPath: "", supportPath: "", preferences: preferences, caches: [:],
+        arguments: arguments, launchType: launchType, isDarkAppearance: false, launchContext: launchContext)
+    try await runtime.launch(session: run.session, owner: owner, command: declared, context: context)
+    return run
 }
 
-@MainActor func freshStorage(at url: URL = scratchFile()) -> PluginStorage {
-    PluginStorage(fileURL: url)
-}
-
-func scratchFile() -> URL {
-    FileManager.default.temporaryDirectory.appending(path: "plugin-\(UUID()).json")
-}
-
-@MainActor func perform(_ action: PluginAction, in session: PluginSession, services: Services) {
-    switch action.kind {
-    case .perform(let body): session.call { try body() }
-    case .copy(let text): services.copy(text)
-    case .paste(let text): services.paste(text)
-    case .open(let target): session.open(target)
-    }
-}
-
-@MainActor func list(_ session: PluginSession) -> PluginList? {
-    if case .running(.list(let list)) = session.state { return list }
-    return nil
-}
-
-@MainActor func detail(_ session: PluginSession) -> PluginDetail? {
-    if case .running(.detail(let detail)) = session.state { return detail }
-    return nil
-}
-
-@MainActor func failure(_ session: PluginSession) -> String? {
-    if case .failed(let message) = session.state { return message }
-    return nil
-}
-
-@MainActor func compileError(_ manifest: PluginManifest, _ fixture: String, kit: PluginSources) -> String? {
+@MainActor func started(
+    _ manifest: PluginManifest, _ command: String, fixture: String, storage: ExtensionStorage = freshStorage(),
+    host: TestHost = TestHost(), arguments: [String: String] = [:],
+    preferences: [String: ExtensionPreferenceValue] = [:], launchType: ExtensionLaunchType = .userInitiated,
+    launchContext: [String: RenderValue] = [:]
+) async -> Run {
     do {
-        _ = try PluginSession(
-            manifest: manifest, command: manifest.commands[0], sources: sources(fixture), kit: kit,
-            storage: freshStorage(), services: Services())
+        return try await launch(
+            manifest, command, fixture: fixture, storage: storage, host: host, arguments: arguments,
+            preferences: preferences, launchType: launchType, launchContext: launchContext)
+    } catch {
+        print("FAIL  launch \(command): \(error.localizedDescription)")
+        exit(1)
+    }
+}
+
+/// Why launching fails, or nil when it doesn't.
+@MainActor func launchError(_ manifest: PluginManifest, _ command: String, fixture: String) async -> String? {
+    do {
+        let run = try await launch(manifest, command, fixture: fixture)
+        await run.stop()
         return nil
     } catch {
-        return error.description
+        return error.localizedDescription
     }
 }
 
@@ -150,7 +239,7 @@ func scratchFile() -> URL {
 }
 
 @MainActor func run() async {
-    let kit = must("read the kit") { try PluginSources.read(from: kitDirectory, requiringMain: false) }
+    kit = must("read the kit") { try PluginSources.read(from: kitDirectory, requiringMain: false) }
     pluginDescription = must("read the plugin description") {
         try PluginSources.read(from: descriptionDirectory, requiringMain: false)
     }
@@ -210,7 +299,7 @@ func scratchFile() -> URL {
     }
     check("the manifest isn't one of the plugin's sources", !sources("cities").files.contains { $0.name == "Manifest.swift" })
 
-    // MARK: The catalog and its cache
+        // MARK: The catalog and its cache
 
     let pluginsFolder = FileManager.default.temporaryDirectory.appending(path: "plugins-\(UUID())")
     let cacheFolder = FileManager.default.temporaryDirectory.appending(path: "manifests-\(UUID())")
@@ -251,101 +340,231 @@ func scratchFile() -> URL {
     check("module names are Swift identifiers", InstalledPlugin.moduleName(for: "world-clock") == "WorldClock")
     check("a module name never shadows the kit", InstalledPlugin.moduleName(for: "tinycast") != "Tinycast")
 
+    // MARK: What the Extensions host sees
+
+    let kitchen = manifest(at: "kitchen")
+    let host = kitchen.extensionManifest()
+    check("a plugin joins the host under a dotted name", host?.name == "plugin.kitchen")
+    check("its commands keep their modes", host?.commands.map(\.mode) == [.view, .view, .menuBar, .noView, .noView])
+    check("a menu bar interval crosses", host?.commands[2].interval != nil)
+    check("arguments cross", host?.commands[0].arguments.map(\.name) == ["subject"])
+    check("and the plugin's preferences", host?.preferences.map(\.name) == ["greeting", "loud"])
+    check("the JSON form keeps the new fields", (try? PluginManifest.decode(kitchen.json())) == kitchen)
+
     // MARK: A view command, end to end
 
     let cities = manifest(at: "cities")
-    let services = Services()
-    let storageFile = scratchFile()
-    let storage = freshStorage(at: storageFile)
     let clock = ContinuousClock()
-    let started = clock.now
-    let session = launch(cities, fixture: "cities", kit: kit, storage: storage, services: services)
-    print("      first load \(clock.now - started)")
-    await session.open()
-    check("the list opens loading", list(session)?.isLoading == true)
-    check("the list keeps its title", list(session)?.title == "Cities")
-    check("and its prompt", list(session)?.searchPrompt == "Filter cities")
-    await until { list(session)?.isLoading == false }
-    check("its task loads the rows", list(session)?.sections.last?.items.count == 3)
+    let storage = freshStorage()
+    let started0 = clock.now
+    let session = await started(cities, "cities", fixture: "cities", storage: storage)
+    print("      first launch \(clock.now - started0)")
+    check("the list renders on launch", session.root?.type == "List")
+    check("loading at first", session.root?.bool("isLoading") == true)
+    check("with its title", session.root?.string("navigationTitle") == "Cities")
+    check("and its prompt", session.root?.string("searchBarPlaceholder") == "Filter cities")
+    check("a list with its own search isn't filtered by Tinycast", session.root?.bool("filtering") == false)
+    await until { session.root?.bool("isLoading") == false }
+    check("its task loads the rows", session.find("List.Section", "Cities")?.children.count == 3)
 
-    session.call { try list(session)?.search?.onChange("l") }
-    check("typing filters through the binding", list(session)?.sections.last?.items.map(\.title) == ["London", "Lima"])
-    check("the binding reads back what was typed", list(session)?.search?.text == "l")
+    await session.fire(session.root, "onSearchTextChange", ["l"])
+    let rows = session.find("List.Section", "Cities")?.children ?? []
+    check("typing filters through the binding", rows.map { $0.string("title") } == ["London", "Lima"])
+    check("the binding reads back what was typed", session.root?.string("searchText") == "l")
 
-    let lima = list(session)!.sections.last!.items.first { $0.title == "Lima" }!
-    check("a row has its badge", lima.badges == ["4"])
-    if case .symbol("building.2", nil) = lima.icon { check("and its symbol", true) } else { check("and its symbol", false) }
-    if case .copy("Lima") = lima.actions[0].kind {
-        check("copy is the first action, unhandled by the script", true)
-    } else {
-        check("copy is the first action, unhandled by the script", false)
-    }
-    check("a declared shortcut crosses", lima.actions[1].shortcutKey == "p")
-    check("with its modifiers", Set(lima.actions[1].modifiers) == ["command", "shift"])
-    perform(lima.actions[1], in: session, services: services)
-    check("@AppStorage writes the plugin's storage", storage.value(forKey: "pinned") == "Lima")
-    check("and the list shows the pin", list(session)?.sections.first?.title == "Pinned")
+    let lima = rows.last
+    check("a row has its badge", lima?.array("accessories").first?.objectValue?["text"]?.stringValue == "4")
+    check(
+        "and its symbol",
+        lima?.object("icon")?["source"]?.objectValue?["systemImage"]?.stringValue == "building.2")
+    let copy = session.action("Copy to Clipboard", of: lima)
+    check("copy is the first action", lima?.node("actions")?.children.first?.string("title") == "Copy to Clipboard")
+    await session.fire(copy)
+    await session.runtime.drainHostCalls()
+    try? await Task.sleep(for: .milliseconds(20))
+    check("copying reaches the clipboard", session.host.saw("clipboard.copy {\"text\":\"Lima\"}"))
+    check("closes the palette and says so", session.host.saw("window.close") && session.host.saw("feedback.showHUD Copied"))
+    let pin = session.action("Pin", of: lima)
+    check("a declared shortcut crosses", pin?.object("shortcut")?["key"]?.stringValue == "p")
+    check(
+        "with Raycast's modifier names",
+        pin?.object("shortcut")?["modifiers"]?.arrayValue?.compactMap(\.stringValue) == ["cmd", "shift"])
+    await session.fire(pin)
+    check(
+        "@AppStorage writes the plugin's storage",
+        storage.localStorageValue(extension: "plugin.fixture", key: "pinned") == .string("Lima"))
+    check("and the list shows the pin", session.all("List.Section").first?.string("title") == "Pinned")
+    let pinnedRow = session.find("List.Section", "Pinned")?.children.first
+    check("tinted", pinnedRow?.object("icon")?["tintColor"]?.stringValue == "raycast-orange")
 
-    perform(lima.actions[2], in: session, services: services)
-    check("a NavigationLink pushes its view", detail(session)?.markdown.contains("Lima") == true)
-    check("onto the plugin's own stack", session.navigationDepth == 2)
-    perform(detail(session)!.actions[0], in: session, services: services)
-    perform(detail(session)!.actions[0], in: session, services: services)
-    check("a pushed view keeps its @State", detail(session)?.markdown.contains("Visited 2 times") == true)
-    check("metadata crosses", detail(session)?.metadata.first?.value == "Peru")
-    check("going back returns to the list", session.goBack() && list(session) != nil && session.navigationDepth == 1)
-    check("the root can't go back", !session.goBack())
-    session.close()
+    let limaAgain = session.find("List.Section", "Cities")?.children.last
+    await session.fire(session.action("Show", of: limaAgain))
+    check("a NavigationLink pushes its view", session.root?.string("markdown")?.contains("Lima") == true)
+    check("onto the host's stack", session.depth == 2)
+    let visit = session.action("Visit", of: session.root)
+    await session.fire(visit)
+    await session.fire(session.action("Visit", of: session.root))
+    check("a pushed view keeps its @State", session.root?.string("markdown")?.contains("Visited 2 times") == true)
+    let label = session.find("Detail.Metadata.Label", "Country")
+    check("metadata crosses", label?.string("text") == "Peru")
+    let popped = await session.runtime.popNavigation(session: session.session)
+    try? await Task.sleep(for: .milliseconds(20))
+    check("going back returns to the list", popped && session.root?.type == "List" && session.depth == 1)
+    let rootPop = await session.runtime.popNavigation(session: session.session)
+    check("the root can't go back", !rootPop)
+    let ids = session.all("List.Item").map(\.id)
+    check("node ids are stable and distinct", Set(ids).count == ids.count && ids.allSatisfy { $0 > 1024 })
+    await session.stop()
 
     // MARK: Storage outlives the session
 
-    let reopened = launch(cities, fixture: "cities", kit: kit, storage: freshStorage(at: storageFile), services: services)
-    await reopened.open()
-    check("a new session reads the stored pin", list(reopened)?.sections.first?.items.first?.title == "Lima")
-    reopened.close()
+    let reopened = await started(cities, "cities", fixture: "cities", storage: storage)
+    check("a new session reads the stored pin", reopened.find("List.Section", "Pinned")?.children.first?.string("title") == "Lima")
+    await reopened.stop()
 
     // MARK: An action command
 
     let warm = clock.now
-    let action = launch(cities, command: 1, fixture: "cities", kit: kit, services: services)
-    print("      cached load \(clock.now - warm)")
-    await action.run()
-    check("an action command finishes", { if case .finished = action.state { return true }; return false }())
-    check("and its HUD reaches the host", services.log.last == "hud: Hello from hello")
+    let hello = await started(cities, "hello", fixture: "cities")
+    print("      warm launch \(clock.now - warm)")
+    await until { hello.recorder.finished || hello.recorder.failure != nil }
+    check("an action command finishes", hello.recorder.finished)
+    try? await Task.sleep(for: .milliseconds(20))
+    check("and its HUD reaches the host", hello.host.saw("feedback.showHUD Hello from hello"))
+
+    // MARK: Forms
+
+    let note = await started(kitchen, "note", fixture: "kitchen", arguments: ["subject": "Groceries"])
+    check("a form renders", note.root?.type == "Form")
+    let subject = note.find("Form.TextField", "Subject")
+    check("an argument reaches the command", subject?.string("value") == "Groceries")
+    check("with its placeholder", subject?.string("placeholder") == "What about?")
+    check("a field's id defaults to its title", subject?.string("id") == "Subject")
+    await note.fire(subject, "onTinycastChange", ["Milk"])
+    check("a change writes the binding", note.find("Form.TextField", "Subject")?.string("value") == "Milk")
+    await note.fire(note.find("Form.Dropdown", "Kind"), "onTinycastChange", ["task"])
+    await note.fire(note.find("Form.TagPicker", "Tags"), "onTinycastChange", [["home", "work"]])
+    await note.fire(note.find("Form.Checkbox", "Urgent"), "onTinycastChange", [true])
+    check("a checkbox toggles", note.find("Form.Checkbox", "Urgent")?.bool("value") == true)
+    check(
+        "a dropdown's choices take the form's names",
+        note.find("Form.Dropdown", "Kind")?.children.map(\.type) == ["Form.Dropdown.Item", "Form.Dropdown.Item"])
+    await note.fire(note.find("Form.DatePicker", "Due"), "onTinycastChange", [["$date": "2026-12-24T10:00:00Z"]])
+    check("a date crosses", note.find("Form.DatePicker", "Due")?.date("value") != nil)
+    check("a divider becomes the form's separator", note.find("Form.Separator") != nil)
+    await note.fire(note.action("Save", of: note.root))
+    check(
+        "submit runs with the form's values",
+        note.find("Form.Description", "Status")?.string("text") == "Saved Milk task home,work")
+    await note.stop()
+    let kitchenStorage = freshStorage()
+    let first = await started(kitchen, "note", fixture: "kitchen", storage: kitchenStorage)
+    await first.fire(first.find("Form.TextField", "Subject"), "onTinycastChange", ["Remembered"])
+    await first.fire(first.action("Save", of: first.root))
+    check(
+        "a stored field is saved for the command",
+        kitchenStorage.formValues(extension: "plugin.kitchen", command: "note")["Subject"] == "Remembered")
+    await first.stop()
+    let second = await started(kitchen, "note", fixture: "kitchen", storage: kitchenStorage)
+    check("and the next launch starts from it", second.find("Form.TextField", "Subject")?.string("value") == "Remembered")
+    await second.stop()
+
+    // MARK: Grids and the search bar's dropdown
+
+    let colors = await started(kitchen, "colors", fixture: "kitchen", storage: kitchenStorage)
+    check("a grid renders", colors.root?.type == "Grid" && colors.root?.double("columns") == 4)
+    let tiles = colors.find("Grid.Section", "Swatches")?.children ?? []
+    check("its items are grid items", tiles.map(\.type) == ["Grid.Item", "Grid.Item", "Grid.Item"])
+    check("a colour tile is a swatch", tiles.first?.object("content")?["color"]?.stringValue == "raycast-red")
+    check("a symbol becomes the tile's content", tiles.dropFirst().first?.props["content"] != nil)
+    let dropdown = colors.root?.node("searchBarAccessory")
+    check("the dropdown sits beside the search", dropdown?.type == "Grid.Dropdown" && dropdown?.children.count == 2)
+    await colors.fire(dropdown, "onChange", ["cool"])
+    check(
+        "choosing writes @AppStorage",
+        kitchenStorage.localStorageValue(extension: "plugin.kitchen", key: "palette") == .string("cool")
+            && colors.find("Grid.Section", "Swatches")?.children.last?.string("title") == "Ice")
+    await colors.stop()
+
+    // MARK: Menu bar commands
+
+    let status = await started(kitchen, "status", fixture: "kitchen")
+    check("a menu bar command renders its extra", status.root?.type == "MenuBarExtra" && status.root?.string("title") == "0")
+    let add = status.find("MenuBarExtra.Item", "Add")
+    check("its items have shortcuts", add?.object("shortcut")?["modifiers"]?.arrayValue?.first?.stringValue == "cmd")
+    await status.fire(add)
+    check("an item's action renders again", status.root?.string("title") == "1")
+    check(
+        "sections, submenus and separators take the menu's names",
+        status.find("MenuBarExtra.Section", "More") != nil && status.find("MenuBarExtra.Submenu", "Reset") != nil
+            && status.find("MenuBarExtra.Separator") != nil)
+    await status.stop()
+
+    // MARK: Preferences, toasts and launching commands
+
+    let toast = await started(
+        kitchen, "toast", fixture: "kitchen", preferences: ["greeting": .string("Howdy"), "loud": .bool(true)],
+        launchType: .background)
+    await until { toast.recorder.finished || toast.recorder.failure != nil }
+    try? await Task.sleep(for: .milliseconds(30))
+    check("an action command reads its preferences", toast.host.saw("feedback.showToast {") && toast.host.log.contains { $0.contains("HOWDY") })
+    check("a toast changes after it shows", toast.host.log.contains { $0.hasPrefix("feedback.updateToast 7") && $0.contains("background") })
+    let update = toast.host.log.last { $0.hasPrefix("feedback.updateToast") }
+    let token = update.flatMap { line in
+        line.range(of: "plugin-toast-[0-9]+", options: .regularExpression).map { String(line[$0]) }
+    }
+    check("its button is a token for the script's closure", token != nil)
+    if let token { await toast.runtime.runToastAction(token: token) }
+    try? await Task.sleep(for: .milliseconds(30))
+    check("which runs it", toast.host.saw("feedback.showHUD Undone"))
+
+    let hop = await started(kitchen, "hop", fixture: "kitchen")
+    await until { hop.recorder.finished || hop.recorder.failure != nil }
+    try? await Task.sleep(for: .milliseconds(20))
+    check("launchCommand asks the host", hop.host.log.contains {
+        $0.hasPrefix("system.launchCommand") && $0.contains("\"name\":\"note\"") && $0.contains("From hop")
+    })
+    let hopped = await started(
+        kitchen, "note", fixture: "kitchen", arguments: ["subject": "From hop"], launchContext: ["origin": .string("hop")])
+    check("a launch context reaches the command", hopped.root?.string("navigationTitle") == "Note from hop")
+    await hopped.stop()
 
     // MARK: Failures stay inside the plugin
 
     let unregistered = manifest(
         plugin(#"name: "fixture", title: "F","#, commands: #".view("cities", title: "C"), .view("missing", title: "M")"#))
-    let lost = compileError(unregistered, "cities", kit: kit)
+    let lost = await launchError(unregistered, "cities", fixture: "cities")
     check("a command main.swift never registered says so", lost?.contains("doesn't register “missing”") == true)
     check("as does one the manifest doesn't declare", lost?.contains("registers “hello”, which Manifest.swift doesn't") == true)
     check(
         "and a command registered as the wrong kind",
-        PluginSession.registrationProblems(
-            declared: unregistered.commands, views: ["missing"], actions: ["cities"]).first?.contains("Plugin.action") == true)
+        StirPluginRuntime.registrationProblems(
+            declared: unregistered.commands, registered: ["missing": "view", "cities": "no-view"]
+        ).first?.contains("Plugin.action") == true)
 
     let broken = manifest(at: "broken")
-    let error = compileError(broken, "broken", kit: kit)
+    let error = await launchError(broken, "one", fixture: "broken")
     check("a type error is reported with its file", error?.contains("main.swift") == true)
 
     let runaway = manifest(at: "runaway")
-    let spin = launch(runaway, fixture: "runaway", kit: kit, services: services)
-    await spin.open()
+    let spin = await started(runaway, "spin", fixture: "runaway")
     let spinStarted = clock.now
-    perform(list(spin)!.sections[0].items[0].actions[0], in: spin, services: services)
-    check("an endless loop is stopped", failure(spin) != nil)
+    await spin.fire(spin.action("Forever", of: spin.find("List.Item", "Spin")))
+    check("an endless loop is stopped", spin.recorder.failure != nil)
     check("within the time limit", clock.now - spinStarted < .seconds(3))
-    spin.close()
 
     // MARK: Permissions are APIs
 
     let gated = manifest(at: "gated")
-    let denied = compileError(gated, "gated", kit: kit)
+    let denied = await launchError(gated, "fetch", fixture: "gated")
     check("without the network permission URLSession doesn't exist", denied?.contains("URLSession") == true)
     let granted = manifest(
         plugin(#"name: "gated", title: "G", permissions: [.network],"#, commands: #".action("fetch", title: "F")"#))
-    check("with it the same plugin compiles", compileError(granted, "gated", kit: kit) == nil)
+    let compiled = Result { () throws(PluginSessionError) in
+        _ = try StirPluginRuntime.compile(
+            plugin: granted, kit: kit, sources: sources("gated"), hostAPI: TestHost(), output: { _ in })
+    }
+    check("with it the same plugin compiles", (try? compiled.get()) != nil)
 
     // MARK: What open may reach
 
@@ -358,68 +577,76 @@ func scratchFile() -> URL {
 
     // MARK: The CleanShot X example
 
-    let cleanshot = example("cleanshot-x")
-    let shots = Services()
-    let tools = launch(cleanshot, fixture: "cleanshot-x", kit: kit, services: shots)
-    await tools.open()
-    let titles = list(tools)?.sections.map(\.title)
+    let cleanshot = manifest(at: "cleanshot-x")
+    let tools = await started(cleanshot, "cleanshot", fixture: "cleanshot-x")
+    let titles = tools.all("List.Section").map { $0.string("title") }
     check("CleanShot X lists its tools", titles == ["Capture", "Record", "Edit", "Desktop", nil])
-    let area = list(tools)?.sections.first?.items.first
-    check("a capture offers its five after-capture choices", area?.actions.count == 6)
-    if let action = area?.actions.last { perform(action, in: tools, services: shots) }
-    check("which open CleanShot's URL API", shots.log.last == "open: cleanshot://capture-area?action=pin")
-    tools.close()
-    for (index, command) in cleanshot.commands.enumerated() where command.mode == .action {
-        let session = launch(cleanshot, command: index, fixture: "cleanshot-x", kit: kit, services: shots)
-        await session.run()
-        let expected = command.name == "open-settings" ? "open-settings" : command.name
-        if shots.log.last != "open: cleanshot://\(expected)" || failure(session) != nil {
-            check("the \(command.name) command opens its link", false)
+    let area = tools.all("List.Item").first
+    check("a capture offers its five after-capture choices", (area?.node("actions")?.children.count ?? 0) >= 5)
+    if let last = area?.node("actions")?.children.last { await tools.fire(last) }
+    try? await Task.sleep(for: .milliseconds(20))
+    check("which open CleanShot's URL API", tools.host.saw("system.open cleanshot://capture-area?action="))
+    await tools.stop()
+    var opened = true
+    for command in cleanshot.commands where command.mode == .action {
+        let run = await started(cleanshot, command.name, fixture: "cleanshot-x")
+        await until { run.recorder.finished || run.recorder.failure != nil }
+        try? await Task.sleep(for: .milliseconds(10))
+        if !run.host.saw("system.open cleanshot://\(command.name)") || run.recorder.failure != nil {
+            print("      \(command.name): \(run.host.log) \(run.recorder.failure ?? "")")
+            opened = false
         }
     }
-    check("every CleanShot X command is registered and opens its link", true)
+    check("every CleanShot X command is registered and opens its link", opened)
     let undeclared = manifest(
         manifestText(examples.appending(path: "cleanshot-x"))
             .replacingOccurrences(of: #"permissions: [.openURLs(schemes: ["cleanshot"])],"#, with: ""))
     check("the example without its grant has no schemes", undeclared.urlSchemes.isEmpty)
-    let areaIndex = undeclared.commands.firstIndex { $0.name == "capture-area" } ?? 0
-    let refused = launch(undeclared, command: areaIndex, fixture: "cleanshot-x", kit: kit, services: shots)
-    await refused.run()
-    check("without openURLs the same plugin can't open them", shots.log.last == "refused: cleanshot://capture-area")
+    let refused = await started(undeclared, "capture-area", fixture: "cleanshot-x")
+    await until { refused.recorder.finished || refused.recorder.failure != nil }
+    try? await Task.sleep(for: .milliseconds(10))
+    check(
+        "without openURLs the same plugin can't open them",
+        !refused.host.saw("system.open") && refused.host.saw("feedback.showHUD This plugin can't open cleanshot"))
 
     // MARK: The Hacker News example, against the live API
 
-    let hackerNews = example("hacker-news")
-    let news = launch(hackerNews, fixture: "hacker-news", kit: kit)
-    await news.open()
-    check("Hacker News opens on the front page", list(news)?.title == "Front Page")
-    await until(seconds: 15) { list(news)?.isLoading == false }
-    let stories = list(news)?.sections.first?.items ?? []
-    if list(news)?.emptyText == "Couldn't load stories" {
-        print("SKIP  Hacker News is unreachable from here: \(news.output)")
+    let hackerNews = manifest(at: "hacker-news")
+    let newsStorage = freshStorage()
+    let news = await started(hackerNews, "stories", fixture: "hacker-news", storage: newsStorage)
+    check("Hacker News opens on the front page", news.root?.string("navigationTitle") == "Front Page")
+    await until(seconds: 15) { news.root?.bool("isLoading") == false }
+    let stories = news.all("List.Item")
+    if news.find("List.EmptyView")?.string("title") == "Couldn't load stories" {
+        print("SKIP  Hacker News is unreachable from here")
     } else {
         check("it loads stories", stories.count > 10)
-        check("each with points, comments and age", stories.first?.badges.count == 3)
-        let firstTwo = stories.first?.actions.prefix(2).map(\.title)
+        check("each with points, comments and age", stories.first?.array("accessories").count == 3)
+        let firstTwo = stories.first?.node("actions")?.children.prefix(2).map { $0.string("title") }
         check("↵ opens the story, ⌘↵ the comments", firstTwo == ["Open Story", "Open Comments"])
-        if let switchFeed = stories.first?.actions.first(where: { $0.title == "Show Newest" }) {
-            perform(switchFeed, in: news, services: Services())
-        }
-        check("switching feeds retitles the list", list(news)?.title == "Newest")
-        await until(seconds: 15) { list(news)?.isLoading == false }
-        check("and reloads it", (list(news)?.sections.first?.items.count ?? 0) > 10)
-        let newest = list(news)?.sections.first?.items.map(\.title) ?? []
-        news.call { try list(news)?.search?.onChange("swift") }
-        // The search's own task sets loading only once it starts, so wait for its rows instead.
+        let feed = news.root?.node("searchBarAccessory")
+        await news.fire(feed, "onChange", ["newest"])
+        check("switching feeds retitles the list", news.root?.string("navigationTitle") == "Newest")
+        await until(seconds: 15) { news.root?.bool("isLoading") == false }
+        check("and reloads it", news.all("List.Item").count > 10)
+        let newest = news.all("List.Item").map { $0.string("title") }
+        await news.fire(news.root, "onSearchTextChange", ["swift"])
         await until(seconds: 15) {
-            list(news)?.isLoading == false && list(news)?.sections.first?.items.map(\.title) != newest
+            news.root?.bool("isLoading") == false && news.all("List.Item").map { $0.string("title") } != newest
         }
-        let found = list(news)?.sections.first?.items ?? []
+        let found = news.all("List.Item")
         check("search finds stories", !found.isEmpty)
-        check("that match", found.contains { $0.title.lowercased().contains("swift") })
-        if failures > 0 { print(news.output) }
+        check("that match", found.contains { $0.string("title")?.lowercased().contains("swift") == true })
     }
-    news.close()
+    await news.stop()
+    let top = await started(hackerNews, "top-story", fixture: "hacker-news")
+    await until(seconds: 15) { top.root?.bool("isLoading") == false }
+    check("the top story sits in the menu bar", top.root?.type == "MenuBarExtra")
+    if top.root?.string("title") != nil {
+        check("with its menu of stories", top.all("MenuBarExtra.Item").count >= 6)
+        check("each with an ⌥ alternate", top.all("MenuBarExtra.Item").first?.node("alternate") != nil)
+    }
+    await top.stop()
 
     print(failures == 0 ? "All plugin host checks passed." : "\(failures) plugin host checks failed.")
     exit(failures == 0 ? 0 : 1)

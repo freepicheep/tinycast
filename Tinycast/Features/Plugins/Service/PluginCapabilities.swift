@@ -6,6 +6,62 @@ import StirFoundation
 /// The APIs a permission grants. Each keeps Foundation's or AppKit's own spelling, so a plugin reads
 /// as the Swift its author already writes, and is absent from scripts that weren't granted it.
 enum PluginCapabilities {
+    /// A session's host modules: the kit's own and what each permission grants.
+    @MainActor
+    static func modules(for permissions: Set<PluginPermission>) -> [StirHostModule] {
+        var modules = [hostModule, foundation(network: permissions.contains(.network))]
+        if permissions.contains(.clipboard) { modules.append(appKit) }
+        if permissions.contains(.selection) { modules.append(selectionHost) }
+        return modules
+    }
+
+    /// The host types every plugin's kit renders into; plugins see them only through the kit.
+    static var hostModule: StirHostModule {
+        StirHostModule(
+            "_TinycastHost",
+            exports: [
+                PluginNode.self, PluginValue.self, PluginLaunch.self, PluginEnvironment.self,
+                PluginApplication.self
+            ])
+    }
+
+    static var selectionHost: StirHostModule {
+        StirHostModule("_TinycastSelection", exports: [PluginSelection.self])
+    }
+
+    /// `import Selection`, with the selection permission: Swift source over the host object, so a
+    /// plugin calls `selectedText()` as a function and the host knows whose session asks.
+    @MainActor
+    static func loadSelection(into context: StirContext, hostAPI: ExtensionHostAPI) throws {
+        let module = try context.load(
+            files: [SourceFile(name: "Selection.swift", text: selectionSource)], moduleName: "Selection")
+        try module.run(limits: StirPluginRuntime.limits)
+        let bind = try module.function(
+            "_bind", as: ((PluginSelection) throws -> Void).self, limits: StirPluginRuntime.limits)
+        try bind(PluginSelection(hostAPI: hostAPI))
+    }
+
+    private static let selectionSource = """
+        import Foundation
+        import _TinycastSelection
+
+        var _host: _SelectionHost? = nil
+
+        func _bind(_ host: _SelectionHost) { _host = host }
+
+        /// The text selected in the app that was in front before the palette opened.
+        public func selectedText() async throws -> String {
+            guard let host = _host else { return "" }
+            return try await host.text()
+        }
+
+        /// The files and folders selected in Finder.
+        public func selectedFinderItems() async throws -> [URL] {
+            guard let host = _host else { return [] }
+            return try await host.finderItems()
+        }
+        """
+
     /// `import Foundation`: StirFoundation's slice, plus `URLSession` with the network permission.
     static func foundation(network: Bool) -> StirHostModule {
         let base = StirFoundation.module
@@ -131,6 +187,28 @@ enum PluginNetworkError: Error, CustomStringConvertible {
         switch self {
         case .unsupportedURL(let url): "only http and https URLs can be fetched, not \(url)"
         case .tooLarge(let size): "the response is \(size) bytes; plugins can fetch up to 16 MB"
+        }
+    }
+}
+
+@StirExport(as: "_SelectionHost")
+@MainActor
+final class PluginSelection {
+    private let hostAPI: ExtensionHostAPI
+
+    fileprivate init(hostAPI: ExtensionHostAPI) {
+        self.hostAPI = hostAPI
+    }
+
+    func text() async throws -> String {
+        let json = try await hostAPI.perform(api: "system", method: "selectedText", arguments: [])
+        return RenderValue.arguments(from: "[\(json)]").first?.stringValue ?? ""
+    }
+
+    func finderItems() async throws -> [URL] {
+        let json = try await hostAPI.perform(api: "system", method: "selectedFinderItems", arguments: [])
+        return RenderValue.arguments(from: json).compactMap {
+            $0.objectValue?["path"]?.stringValue.map { URL(filePath: $0) }
         }
     }
 }

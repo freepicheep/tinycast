@@ -22,7 +22,7 @@ final class ExtensionNodeShims: @unchecked Sendable {
 
     /// Returns the JSON envelope `{ok, value}` / `{ok:false, error, code}` the JS side unwraps.
     func perform(api: String, method: String, argsJSON: String) -> String {
-        let arguments = ExtensionRuntime.jsonArray(from: argsJSON)
+        let arguments = ExtensionJSON.array(from: argsJSON)
         do {
             let value = try dispatch(api: api, method: method, arguments: arguments)
             return envelope(["ok": true, "value": value ?? NSNull()])

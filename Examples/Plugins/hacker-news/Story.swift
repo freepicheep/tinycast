@@ -40,6 +40,10 @@ struct SearchResponse: Decodable {
     let hits: [Story]
 }
 
+enum FeedError: Error {
+    case status(Int)
+}
+
 enum Feed: String, CaseIterable {
     case frontPage = "front-page"
     case newest
@@ -96,5 +100,15 @@ enum Feed: String, CaseIterable {
         if !query.isEmpty { items.append(URLQueryItem(name: "query", value: query)) }
         components.queryItems = items
         return components.url
+    }
+
+    /// The feed's stories, or those matching `query`.
+    func stories(searching query: String = "") async throws -> [Story] {
+        guard let url = url(searching: query) else { return [] }
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard response.statusCode == 200 else { throw FeedError.status(response.statusCode) }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(SearchResponse.self, from: data).hits
     }
 }

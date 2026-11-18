@@ -54,7 +54,7 @@ struct ExtensionBootConfig: Sendable {
     }
 
     func jsonString() -> String {
-        ExtensionRuntime.jsonString(
+        ExtensionJSON.string(
             from: [
                 "node": [
                     "arch": arch,
@@ -116,7 +116,7 @@ struct ExtensionLaunchContext: Sendable {
         if let fallbackText { launchProps["fallbackText"] = fallbackText }
         if !launchContext.isEmpty { launchProps["launchContext"] = launchContext.mapValues(\.jsonValue) }
 
-        return ExtensionRuntime.jsonString(
+        return ExtensionJSON.string(
             from: [
                 "environment": environment,
                 "preferences": preferences.mapValues(\.jsonValue),

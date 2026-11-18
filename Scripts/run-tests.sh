@@ -455,6 +455,7 @@ run ExtensionIconTests     Tinycast/Platform/Appearance.swift \
                            Tinycast/Features/Extensions/Service/ExtensionNodeShims.swift \
                            Tinycast/Features/Extensions/Service/ExtensionRuntime.swift \
                            Tinycast/Features/Extensions/Service/ExtensionCommandRuntime.swift \
+                           Tinycast/Features/Extensions/Model/ExtensionJSON.swift \
                            Tinycast/Features/Extensions/Service/ExtensionIconCache.swift \
                            Tinycast/Features/Extensions/UI/ExtensionAnimatedImage.swift \
                            Tinycast/Features/Extensions/UI/ExtensionImage.swift \
@@ -794,6 +795,8 @@ run slow ExtensionTests    -parse-as-library \
                            $E/Service/ExtensionNodeShims.swift \
                            $E/Service/ExtensionRuntime.swift \
                            $E/Service/ExtensionCommandRuntime.swift \
+                           $E/Model/ExtensionJSON.swift \
+                           $E/Model/ExtensionHostError.swift \
                            $E/Service/ExtensionNameResolver.swift \
                            $E/Service/ExtensionWebSocketBridge.swift \
                            $E/UI/ExtensionAnimatedImage.swift \

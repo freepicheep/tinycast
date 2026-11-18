@@ -47,6 +47,12 @@ struct Stories: View {
         }
         .navigationTitle(feed.title)
         .searchable(text: $query, prompt: "Search \(feed.title)")
+        .searchBarAccessory(
+            Dropdown("Feed", selection: $feedName) {
+                for feed in Feed.allCases {
+                    Choice(feed.title, value: feed.rawValue, systemImage: feed.systemImage)
+                }
+            })
         .loading(isLoading)
         .task(id: feedName + "\n" + query) { await load() }
     }
@@ -58,17 +64,10 @@ struct Stories: View {
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
         }
-        guard let url = feed.url(searching: query) else { return }
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let loaded = try await feed.stories(searching: query)
             guard !Task.isCancelled else { return }
-            guard response.statusCode == 200 else {
-                fail("Hacker News answered \(response.statusCode)")
-                return
-            }
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            stories = try decoder.decode(SearchResponse.self, from: data).hits
+            stories = loaded
             failure = nil
         } catch {
             guard !Task.isCancelled else { return }

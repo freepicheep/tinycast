@@ -1,0 +1,1 @@
+../../../../Tinycast/Features/Extensions/Model/ExtensionManifest.swift

@@ -31,21 +31,21 @@ struct ExtensionTests {
         func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
             calls.append("\(api).\(method)")
             if api == "proc", method == "wait" {
-                return ExtensionRuntime.jsonString(
+                return ExtensionJSON.string(
                     from: try await ExtensionAsyncProcess.wait(arguments.first))
             }
             if api == "proc", method == "read" {
-                return ExtensionRuntime.jsonString(from: try await ExtensionAsyncProcess.read(arguments))
+                return ExtensionJSON.string(from: try await ExtensionAsyncProcess.read(arguments))
             }
             if api == "fetch" {
-                return ExtensionRuntime.jsonString(from: try await fetcher.request(arguments.first))
+                return ExtensionJSON.string(from: try await fetcher.request(arguments.first))
             }
             if api == "websocket" {
-                return ExtensionRuntime.jsonString(
+                return ExtensionJSON.string(
                     from: try await sockets.perform(method: method, arguments: arguments))
             }
             if api == "dns" {
-                return ExtensionRuntime.jsonString(from: await ExtensionNameResolver.resolve(arguments.first))
+                return ExtensionJSON.string(from: await ExtensionNameResolver.resolve(arguments.first))
             }
             switch "\(api).\(method)" {
             case "feedback.showToast":
@@ -1373,7 +1373,7 @@ struct ExtensionTests {
         if let handler = actions.first?.handler {
             await runtime.dispatch(
                 session: "s1", handler: handler,
-                payload: ExtensionRuntime.jsonString(from: []))
+                payload: ExtensionJSON.string(from: []))
             await settle(until: {
                 recorder.trees.last.map {
                     ExtensionScreen(tree: $0, query: "").items.first?.node.string("title")
@@ -1571,7 +1571,7 @@ struct ExtensionTests {
 
         await runtime.dispatch(
             session: "sAccessory", handler: handler,
-            payload: ExtensionRuntime.jsonString(from: [initialValue]))
+            payload: ExtensionJSON.string(from: [initialValue]))
         await settle()
         let seededScreen = recorder.trees.last.map { ExtensionScreen(tree: $0, query: "") }
         check(
@@ -1636,7 +1636,7 @@ struct ExtensionTests {
                 return
             }
             await first.dispatch(
-                session: "sStore", handler: handler, payload: ExtensionRuntime.jsonString(from: [value]))
+                session: "sStore", handler: handler, payload: ExtensionJSON.string(from: [value]))
         }
         await settle()
         check("editing a form stores nothing", host.storedForms.isEmpty)
@@ -2014,7 +2014,7 @@ struct ExtensionTests {
         if let handler = actions.first?.handler {
             await runtime.dispatch(
                 session: "sAsync", handler: handler,
-                payload: ExtensionRuntime.jsonString(from: []))
+                payload: ExtensionJSON.string(from: []))
             await settle()
             screen = ExtensionScreen(tree: recorder.trees.last!, query: "")
             check(

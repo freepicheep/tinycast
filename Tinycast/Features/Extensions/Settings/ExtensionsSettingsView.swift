@@ -77,7 +77,7 @@ struct ExtensionsSettingsView: View {
             storeInstall = request
             core.pendingExtensionStoreInstall = nil
         }
-        .onChange(of: core.extensions.installed.count) { Task { await measureReclaimable() } }
+        .onChange(of: core.extensions.raycastInstalled.count) { Task { await measureReclaimable() } }
         .task {
             await core.extensions.refresh()
             await measureReclaimable()
@@ -124,11 +124,11 @@ struct ExtensionsSettingsView: View {
             if !core.extensions.updates.isEmpty {
                 updatesRow
             }
-            if core.extensions.installed.isEmpty {
+            if core.extensions.raycastInstalled.isEmpty {
                 Text("Nothing installed yet.")
                     .foregroundStyle(.secondary)
             } else {
-                if core.extensions.installed.count > 3 {
+                if core.extensions.raycastInstalled.count > 3 {
                     SettingsFilterField(prompt: "Filter extensions…", query: $filter)
                 }
                 if matching.isEmpty {
@@ -153,9 +153,9 @@ struct ExtensionsSettingsView: View {
         } header: {
             SettingsSectionHeader(anchor: .extensionsInstalled) {
                 Text(
-                    core.extensions.installed.isEmpty
+                    core.extensions.raycastInstalled.isEmpty
                         ? LocalizedStringResource("extensions-installed-section", defaultValue: "Installed")
-                        : "Installed (\(core.extensions.installed.count))")
+                        : "Installed (\(core.extensions.raycastInstalled.count))")
             }
         } footer: {
             if let updateError {
@@ -193,8 +193,8 @@ struct ExtensionsSettingsView: View {
     }
 
     private var matching: [InstalledExtension] {
-        guard !filter.isEmpty else { return core.extensions.installed }
-        return core.extensions.installed.filter { entry in
+        guard !filter.isEmpty else { return core.extensions.raycastInstalled }
+        return core.extensions.raycastInstalled.filter { entry in
             entry.title.localizedCaseInsensitiveContains(filter)
                 || entry.manifest.commands.contains {
                     $0.title.localizedCaseInsensitiveContains(filter)
@@ -290,7 +290,7 @@ struct ExtensionsSettingsView: View {
 
     /// Off-main: measuring walks a `node_modules`, which is tens of thousands of files.
     private func measureReclaimable() async {
-        let installed = Set(core.extensions.installed.map(\.manifest.name))
+        let installed = Set(core.extensions.raycastInstalled.map(\.manifest.name))
         let roots = ExtensionCleanup.defaultRoots()
         reclaimable = await Task.detached(priority: .utility) {
             ExtensionCleanup.reclaimable(installed: installed, in: roots)

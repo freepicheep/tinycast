@@ -3,7 +3,8 @@
 Plugins are commands written in Swift. Tinycast runs them with [Stir](https://github.com/freepicheep/Stir),
 an embedded interpreter for a type-checked subset of Swift. Nothing needs installing or building: a plugin
 is a folder of `.swift` files that Tinycast compiles when a command launches. Its views are shaped like
-SwiftUI's, and Tinycast draws them with its own palette rows and panes.
+SwiftUI's. A plugin command runs in the Extensions host, beside Raycast extensions: the same screens,
+menu bar items, background refresh, preferences, arguments, hotkeys, aliases and toasts.
 
 - [Invariants](#invariants) · [Writing a plugin](#writing-a-plugin) · [The kit](#the-kit) ·
   [Permissions](#permissions) · [How it runs](#how-it-runs) · [Listing plugins elsewhere](#listing-plugins-elsewhere) ·
@@ -11,33 +12,43 @@ SwiftUI's, and Tinycast draws them with its own palette rows and panes.
 
 ## Invariants
 
-- **Off means off.** `pluginsEnabled` is opt-in. `PluginManager.setEnabled(false)` ends the running
-  command, stops watching the folder, empties the installed set and clears the launcher rows. Enabling
-  is also consent to run someone else's code, so it confirms first and never rides a settings backup.
+- **Off means off.** `pluginsEnabled` is opt-in. `PluginManager.setEnabled(false)` stops watching the
+  folder, empties the installed set and takes every plugin out of the Extensions host
+  (`ExtensionManager.setPlugins([])`), which ends its running commands. Enabling is also consent to run
+  someone else's code, so it confirms first and never rides a settings backup.
+- **A plugin is an engine of the Extensions host, not a second palette.** `PluginManager` hands the
+  host one `InstalledExtension` per plugin, with `engine: .plugin` and the manifest translated by
+  `PluginManifest.extensionManifest()`, plus a factory that makes a `StirPluginRuntime` per launch.
+  The host drives it through `ExtensionCommandRuntime`, as it drives the JavaScript runtime, so every
+  lane (palette, background, menu bar) and every host API works for plugins without plugin code.
+- **Plugins keep their own names.** A plugin's host name is `plugin.<name>`; a Raycast extension's
+  name can't contain a dot, so the two never share storage, preferences or entry ids. A plugin's
+  folder is never deleted by Tinycast: the launcher and Settings offer no uninstall for it.
 - **The manifest runs before the plugin's code, and on its own.** `Manifest.swift` is what the launcher
   lists and what decides the plugin's permissions, so it can't be part of the code those permissions
   shape. `PluginManifestReader` runs it in a context of its own, with Foundation's slice and
   `PluginDescription` and nothing else, under the same limits as a command.
-- **`main.swift` registers exactly what the manifest declares.** A session checks every declared
-  command has code of its kind (`Plugin.command` for a view, `Plugin.action` for an action) and that
-  nothing else is registered, and fails the launch with every mismatch listed.
-- **A session is the plugin's whole world.** Each launch gets its own `StirContext`: the kit, the
-  plugin's module and the host APIs its manifest grants. Plugins share no globals, no storage and no
-  state with each other or with an earlier launch, except the `PluginData/<name>.json` storage it owns.
-- **Every entry into script code runs under `PluginSession.limits`** (`StirLimits.untrusted`: 1 s,
-  100M instructions, 64 MB, depth 1000). Closures a script hands back, such as an action's body or a
-  search binding, run under the limits the VM last set, so every call into a session goes through
-  `PluginSession`. A runaway action fails the session, not the app.
+- **`main.swift` registers exactly what the manifest declares.** `StirPluginRuntime.compile` checks
+  every declared command has code of its kind (`Plugin.command`, `Plugin.action`, `Plugin.menuBar`)
+  and that nothing else is registered, and fails the launch with every mismatch listed.
+- **A launch is the plugin's whole world.** Each launch gets its own `StirContext`: the kit, the
+  plugin's module and the host APIs its manifest grants. Plugins share no globals and no state with
+  each other or with an earlier launch; what outlives a launch is the host's `ExtensionStorage` under
+  the plugin's host name.
+- **Every entry into script code runs under `StirPluginRuntime.limits`** (`StirLimits.untrusted`: 1 s,
+  100M instructions, 64 MB, depth 1000), and every call into it is the runtime's: a render, a handler,
+  a toast's action, a task's step. A runaway loop fails the command, not the app.
 - **A permission is an API, not a check.** Without `network`, `import Foundation` has no `URLSession`;
-  without `clipboard`, there is no `import AppKit`. A plugin that uses an API it didn't ask for fails
-  to compile, with an ordinary "cannot find" error.
-- **Copy, paste and open never reach the script.** They are values (`PluginActionKind.copy(String)`),
-  so Tinycast performs them itself after the script has returned.
+  without `clipboard`, there is no `import AppKit`; without `selection`, there is no
+  `import Selection`. A plugin that uses an API it didn't ask for fails to compile, with an ordinary
+  "cannot find" error.
 - **`open` reaches web addresses, `mailto:`, file paths and the app link schemes `.openURLs` names.**
-  `PluginOpenTarget` decides, for a `Link` and for the script's own `open` call alike, before anything
-  reaches `NSWorkspace`. No manifest may name `file` or Tinycast's or Raycast's own schemes.
-- **`Model/PluginPage.swift` is the boundary.** The kit renders a screen into those `@StirExport`
-  types and the palette draws only them; neither side sees the other's view types.
+  `PluginOpenTarget` decides in `PluginEnvironment`, before anything reaches the host. No manifest may
+  name `file` or Tinycast's or Raycast's own schemes.
+- **`Model/PluginNode.swift` is the boundary.** The kit renders a screen into `PluginNode` trees whose
+  types and props are Raycast's components (`List.Item`, `Form.TextField`, `MenuBarExtra.Item`, …),
+  with script closures as handler props. `PluginRenderer` turns them into the host's `RenderTree`,
+  giving nodes ids that are stable from one render to the next and handlers ids the host sends back.
 - **`Resources/PluginKit` and `Resources/PluginDescription` are Stir source, never compiled into the
   app.** They ship as folder resources (`project.yml`), and the Swift compiler never sees them.
 
@@ -57,17 +68,27 @@ let plugin = Plugin(
     description: "The time in the cities you care about.",
     icon: "globe",
     permissions: [.network],
+    preferences: [
+        .textField("home", title: "Home City", default: "London"),
+    ],
     commands: [
         .view("clocks", title: "World Clock", subtitle: "Time zones", keywords: ["time"]),
+        .view("convert", title: "Convert Time", arguments: [.text("time", placeholder: "3pm")]),
         .action("copy-utc", title: "Copy UTC Time"),
+        .menuBar("menu", title: "World Clock in the Menu Bar", interval: "1m"),
     ]
 )
 ```
 
 `name` is lowercase letters, digits and hyphens. A `.view` command opens a screen; an `.action`
-command does its work and closes the palette. A command without a `subtitle` or `icon` shows the
-plugin's title or icon. `permissions` are `.network`, `.clipboard` and `.openURLs(schemes:)`. A typo in
-any of them is a compile error in `Manifest.swift`, with its line. The manifest runs alone: it can't
+command does its work and closes the palette, and with an `interval` also runs in the background; a
+`.menuBar` command is a menu bar item, refreshed every `interval`. A command without a `subtitle` or
+`icon` shows the plugin's title or icon. Commands take `arguments` (fields the launcher shows after
+the title) and `preferences`; the plugin's `preferences` apply to all of them. Preferences are
+`textField`, `password`, `checkbox`, `dropdown`, `application`, `file` and `directory`, edited in
+Settings, and a required one without a value is asked for before the command runs. `permissions` are
+`.network`, `.clipboard`, `.selection` and `.openURLs(schemes:)`. A typo in any of these is a compile
+error in `Manifest.swift`, with its line. The manifest runs alone: it can't
 import `Tinycast` or the plugin's other files, and it has no network whatever it declares.
 
 `main.swift` gives each command its code, by name:
@@ -76,15 +97,17 @@ import `Tinycast` or the plugin's other files, and it has no network whatever it
 import Tinycast
 
 Plugin.command("clocks") { Clocks() }
-Plugin.action("copy-utc") { copyToClipboard(utcNow()) }
+Plugin.command("convert") { Convert(time: Plugin.arguments["time"] ?? "") }
+Plugin.action("copy-utc") { Clipboard.copy(utcNow()) }
+Plugin.menuBar("menu") { ClockMenu() }
 ```
 
 A view is written the way SwiftUI's are:
 
 ```swift
 struct Clocks: View {
-    @State private var query = ""
-    @AppStorage("home") private var home = "London"
+    @Preference("home") private var home: String
+    @AppStorage("pinned") private var pinned = ""
 
     var body: some View {
         List {
@@ -93,8 +116,8 @@ struct Clocks: View {
                     Item(city.name, subtitle: city.time, systemImage: "clock")
                         .actions {
                             CopyButton(text: city.time)
-                            Button("Make Home") { home = city.name }
-                                .keyboardShortcut("h", modifiers: [.command, .shift])
+                            Button("Pin") { pinned = city.name }
+                                .keyboardShortcut("p", modifiers: [.command, .shift])
                             NavigationLink("Details") { CityDetail(city: city) }
                         }
                 }
@@ -114,28 +137,37 @@ Two complete plugins are in [`Examples/Plugins`](../../Examples/Plugins). Copy e
 Plugins folder to install it:
 
 - **`hacker-news`** (port of Raycast's Hacker News): front page, newest, Ask HN and Show HN from HN's
-  Algolia API, plus search as you type. Shows `network`, `@AppStorage`, `.task(id:)` and cancellation.
+  Algolia API, chosen in the search bar's dropdown, plus search as you type, and the top story in the
+  menu bar. Shows `network`, `@AppStorage`, `searchBarAccessory`, `.task(id:)` and cancellation, and a
+  `MenuBarExtra` with ⌥ alternates.
 - **`cleanshot-x`** (port of Raycast's CleanShot X): every CleanShot X tool as a launcher command, plus
   a list of them whose ⌘K menu says what to do with the capture. Shows `.openURLs` and action
   commands registered in a loop.
 
 ## The kit
 
-The `Tinycast` module every plugin imports (`Resources/PluginKit`):
+The `Tinycast` module every plugin imports (`Resources/PluginKit`). Each view renders the Raycast
+component of the same role, so a plugin looks and behaves like an extension:
 
 | Kind | API |
 |---|---|
-| Screens | `List`, `Detail(markdown:)`, `Section`, `Item`, `ForEach`, `Group`, `EmptyView`, `ContentUnavailableView` |
-| List modifiers | `navigationTitle`, `searchable(text:prompt:)`, `loading`, `task`, `task(id:)` |
-| Item modifiers | `id`, `badge`, `keywords`, `tint`, `actions { }`, `detail { }` |
-| Detail modifiers | `navigationTitle`, `metadata { LabeledContent }`, `actions { }`, `loading`, `task`, `task(id:)` |
-| Actions | `Button(_:systemImage:role:action:)`, `CopyButton`, `PasteButton`, `Link`, `NavigationLink`, `.keyboardShortcut` |
-| State | `@State`, `@Binding`, `@AppStorage` (String, Int, Double, Bool) |
-| Host | `showHUD`, `closeWindow`, `open`, `copyToClipboard`, `paste`, `dismiss`, `Plugin.commandName` |
+| Screens | `List`, `Grid(columns:aspectRatio:fit:inset:)`, `Detail(markdown:)`, `Form`, `MenuBarExtra` |
+| Rows | `Section`, `Item`, `ForEach`, `Group`, `EmptyView`, `ContentUnavailableView` |
+| List and grid modifiers | `navigationTitle`, `searchable(text:prompt:)`, `searchable(prompt:)`, `loading`, `showingDetail`, `selection`, `searchBarAccessory(Dropdown)`, `actions { }`, `task`, `task(id:)` |
+| Item modifiers | `id`, `badge`, `accessory(_:image:tooltip:)`, `accessory(date:)`, `tag`, `keywords`, `tint`, `content`, `actions { }`, `detail { Detail }` |
+| Detail | `metadata { LabeledContent, MetadataLink, TagList { Tag }, Divider }`, `actions { }`, `loading`, `task` |
+| Form fields | `TextField`, `SecureField`, `TextEditor`, `Toggle`, `Picker { Choice }`, `TagPicker`, `DatePicker`, `FilePicker`, `Text`, `Divider`; each takes `id`, `info`, `error`, `autoFocus`, `storeValue` |
+| Menu bar | `MenuItem` (`keyboardShortcut`, `alternate`), `Menu`, `Section`, `Divider` |
+| Actions | `Button`, `Link`, `NavigationLink`, `CopyButton`, `PasteButton`, `ShowInFinderButton`, `OpenWithButton`, `TrashButton`, `SubmitButton`, `ActionSection`, `ActionMenu`, `.keyboardShortcut(_:modifiers:)` |
+| State | `@State`, `@Binding`, `@AppStorage` and `LocalStorage` (String, Int, Double, Bool), `Cache`, `@Preference` |
+| Launch | `Plugin.commandName`, `arguments`, `launchType`, `launchContext`, `fallbackText`, `isDarkAppearance` |
+| Host | `showToast` (a `Toast` to change or hide), `showHUD`, `confirmAlert`, `Clipboard`, `open`, `showInFinder`, `closeMainWindow`, `popToRoot`, `clearSearchBar`, `openPreferences`, `launchCommand`, `updateCommandMetadata`, `getApplications`, `getDefaultApplication`, `getFrontmostApplication`, `dismiss` |
 
 ↵ runs a row's first action, ⌘↵ its second, and ⌘K lists all of them. Escape pops a `NavigationLink`
 before it leaves the command. A `task` starts the first time its screen renders and is cancelled when
-the screen leaves the stack. Changing `@State` or `@AppStorage` re-renders.
+the screen leaves the stack. Changing `@State` or `@AppStorage` renders again, once per script call.
+A `Button`'s action is synchronous, as in SwiftUI; start awaited work with `Task { … }`. A form
+field marked `storeValue` is saved when a `SubmitButton` runs and starts from that value next time.
 
 ## Permissions
 
@@ -143,38 +175,49 @@ the screen leaves the stack. Changing `@State` or `@AppStorage` re-renders.
 |---|---|
 | `network` | `URLSession.shared.data(from:)` / `data(for:)`, `URLRequest`, `HTTPURLResponse`: http and https only, 16 MB per response, through a private ephemeral session with no cookies, cache or credentials |
 | `clipboard` | `import AppKit` with `NSPasteboard.general.string(forType: .string)` |
+| `selection` | `import Selection`: `selectedText()` and `selectedFinderItems()` |
 | `openURLs(schemes:)` | `open` and `Link` reach those app link schemes, such as `cleanshot`; never `file`, `tinycast`, `tinycast-dev`, `raycast` or `com.raycast` |
 
-Writing to the clipboard (`CopyButton`, `copyToClipboard`) needs no permission.
+Writing to the clipboard (`CopyButton`, `Clipboard.copy`) and pasting need no permission.
 
 ## How it runs
 
-`PluginManager` (owned by `AppCore`) scans the folder when plugins are on, watches it for added and
-removed plugins, and publishes one `AppEntry` of kind `.pluginCommand` per command. Code is read fresh
-on every launch, so editing a `.swift` file needs no reload; a changed `Manifest.swift` needs Settings →
+`PluginManager` (owned by `AppCore`) scans the folder when plugins are on and watches it for added
+and removed plugins. Each scan hands the Extensions host the plugins as `InstalledExtension`s with
+`engine: .plugin`, so the launcher lists their commands with the host's icon, hotkey, alias and
+argument handling, and the menu bar and background lanes schedule them. Code is read fresh on every
+launch, so editing a `.swift` file needs no reload; a changed `Manifest.swift` needs Settings →
 Plugins → Reload.
 
 `PluginCatalog.scan` runs each `Manifest.swift` through `PluginManifestReader`: the description loads
 as `PluginDescription`, the manifest as its own module, and its top-level code runs. `Plugin.init`
 records itself, and the reader reads the one plugin back as JSON, which `PluginManifest.decode`
-checks (names, duplicates, schemes). The result is kept in `PluginManifests/<sha256>.json`, keyed by
-the manifest's and the description's text, so a manifest runs once per edit, not once per scan.
-A run costs about 300 ms the first time in a process (Stir compiling Foundation's slice and the
-description) and about 10 ms after, and every scan after a relaunch would otherwise be a first time. A scan removes entries no plugin used. Failures
-aren't kept.
+checks (names, duplicates, schemes, preferences, intervals). The result is kept in
+`PluginManifests/<sha256>.json`, keyed by the manifest's and the description's text, so a manifest
+runs once per edit, not once per scan. A run costs about 300 ms the first time in a process (Stir
+compiling Foundation's slice and the description) and about 10 ms after. A scan removes entries no
+plugin used. Failures aren't kept.
 
-Launching a command builds a `PluginSession`:
+Launching a command makes a `StirPluginRuntime`, which the host drives like the JavaScript runtime:
 
-1. The host module `_TinycastHost` exports `PluginEnvironment` and the page types; Foundation (and
-   AppKit) come from `PluginCapabilities`.
-2. The kit loads as `Tinycast`, then the plugin's files load as its own module and `main.swift` runs.
-3. `_tinycastOpen` / `_tinycastRun` start the command, and `_tinycastRender` returns a `PluginPage`.
-   `PluginEnvironment.invalidate()` (state changed) schedules one coalesced render per turn.
-4. `PluginCommandScreen` draws the page as a palette screen; actions come back through
-   `PluginManager.perform`, and Escape through `PluginCoordinator.exitPluginScreen`.
+1. `PluginCapabilities.modules(for:)` gives the context its host modules: `_TinycastHost` (the node
+   types, `PluginEnvironment`, `PluginLaunch`), Foundation with or without the network, and AppKit and
+   `Selection` when granted.
+2. The kit loads as `Tinycast`, then the plugin's files as their own module, and `main.swift` runs;
+   `_tinycastRegistrations` is checked against the manifest.
+3. `_tinycastBegin` hands the kit the session's `PluginEnvironment` and the launch (arguments,
+   preferences, launch type and context). A view or menu bar command opens with `_tinycastOpen` and
+   renders with `_tinycastRender`; an action runs `_tinycastRun` to its end, its tasks included.
+4. `PluginRenderer` turns each `PluginNode` tree into a `RenderTree` the host draws as it draws an
+   extension's. `PluginEnvironment.invalidate()` (state changed) coalesces into one render after the
+   script call. The host sends handler ids back through `dispatch`, Escape through `popNavigation`,
+   and a toast's button through `runToastAction`.
+5. Everything else a plugin asks of the app goes through `PluginEnvironment` to the host's
+   `ExtensionHostAPI`: the same toasts, HUDs, clipboard, windows, launches and storage a Raycast
+   command reaches.
 
-The kit's compiled module is cached per process. The first launch costs about 200 ms (release), and
-later launches about 10 ms. `PluginManager` warms that cache a moment after plugins are switched on.
+The kit's compiled module is cached per process. The first launch costs about 0.5 s (release), and
+later launches under 10 ms. `PluginManager` warms that cache a moment after plugins are switched on.
 
 Errors (compile diagnostics with file and line, a panic, a limit) replace the screen with the message
 and the plugin's recent `print` output.
@@ -202,6 +245,10 @@ declares. It exits 1 with the problems otherwise.
 }
 ```
 
+`tinycast-plugin run <folder> <command> [seconds]` launches one command against a host that prints
+every call it receives, and prints the command's last screen as an outline of its nodes: a quick way
+to see what a plugin renders without the app.
+
 Keys are sorted, and empty lists and missing values are left out, so a manifest always prints the same
 bytes. `urlSchemes` lists `.openURLs`' schemes. It's the same JSON as the app's cache: one shape,
 written by `PluginManifest.json()` and read by `PluginManifest.decode`. The tool is a second product of
@@ -210,8 +257,13 @@ written by `PluginManifest.json()` and read by `PluginManifest.decode`. The tool
 ## Testing
 
 `./Scripts/test-plugins.sh` builds `Tests/PluginHost`, a SwiftPM package that links the real Stir and
-drives sessions from `Tests/PluginHost/Fixtures` and `Examples/Plugins` the way the palette does:
-manifests and their errors, the catalog's cache, registration checks, rendering, bindings, navigation,
-storage, action commands, compile errors, runaway loops, permission gating and `open` rules. It then
-runs `tinycast-plugin dump` on every example. The Hacker News checks call the live API, and are skipped when it's unreachable. Its sources
-are symlinks to `Features/Plugins`. The first run builds Stir and swift-syntax and takes a few minutes.
+drives `StirPluginRuntime` the way the Extensions host does (launch, render, dispatch, pop, stop),
+against a host that records every call. Its checks cover manifests and their errors, the catalog's
+cache, the translation into the host's manifest, registration checks, rendering into Raycast's
+component shapes, bindings, navigation, storage, forms with stored values, grids and their dropdown,
+menu bar commands, preferences, toasts and their actions, `launchCommand`, action commands, compile
+errors, runaway loops, permission gating and `open` rules, using `Tests/PluginHost/Fixtures` and
+`Examples/Plugins`. It then runs `tinycast-plugin dump` on every example. The Hacker News checks call
+the live API, and are skipped when it's unreachable. Its sources are symlinks to `Features/Plugins`
+and the Extensions model files the runtime uses. The first run builds Stir and swift-syntax and takes
+a few minutes.

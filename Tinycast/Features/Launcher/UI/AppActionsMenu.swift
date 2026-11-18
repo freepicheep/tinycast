@@ -104,20 +104,25 @@ enum AppActionsMenu {
                         })
                 }
             }
+            // A plugin is a folder the user keeps, so it is configured here and removed in Finder.
+            let isPlugin = core.extensions.resolve(app)?.0.engine == .plugin
             items.append(
                 PopoverMenuItem(
-                    title: String(localized: "Configure Extension"), systemImage: "slider.horizontal.3",
-                    startsSection: true
+                    title: isPlugin
+                        ? String(localized: "Configure Plugin") : String(localized: "Configure Extension"),
+                    systemImage: "slider.horizontal.3", startsSection: true
                 ) {
                     core.extensionCoordinator.showExtensionSettings(for: app)
                 })
-            items.append(
-                PopoverMenuItem(
-                    title: String(localized: "Uninstall Extension"), systemImage: "trash",
-                    isDestructive: true
-                ) {
-                    core.extensionCoordinator.confirmUninstall(app)
-                })
+            if !isPlugin {
+                items.append(
+                    PopoverMenuItem(
+                        title: String(localized: "Uninstall Extension"), systemImage: "trash",
+                        isDestructive: true
+                    ) {
+                        core.extensionCoordinator.confirmUninstall(app)
+                    })
+            }
         }
         return PopoverMenuContent(header: app.name, items: items)
     }
