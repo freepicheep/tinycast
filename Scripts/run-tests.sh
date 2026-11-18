@@ -448,10 +448,13 @@ run ExtensionIconTests     Tinycast/Platform/Appearance.swift \
                            Tinycast/Features/Extensions/Model/ExtensionRefreshState.swift \
                            Tinycast/Features/Extensions/Model/RenderNode.swift \
                            Tinycast/Features/Extensions/Service/ExtensionCatalog.swift \
+                           Tinycast/Features/Extensions/Model/ExtensionEngine.swift \
+                           Tinycast/Features/Extensions/Model/ExtensionLaunchError.swift \
                            Tinycast/Features/Extensions/Service/ExtensionFetcher.swift \
                            Tinycast/Platform/ProcessExit.swift \
                            Tinycast/Features/Extensions/Service/ExtensionNodeShims.swift \
                            Tinycast/Features/Extensions/Service/ExtensionRuntime.swift \
+                           Tinycast/Features/Extensions/Service/ExtensionCommandRuntime.swift \
                            Tinycast/Features/Extensions/Service/ExtensionIconCache.swift \
                            Tinycast/Features/Extensions/UI/ExtensionAnimatedImage.swift \
                            Tinycast/Features/Extensions/UI/ExtensionImage.swift \
@@ -723,6 +726,7 @@ E=Tinycast/Features/Extensions
 run SymbolsTests           $E/Service/SymbolCatalog.swift
 run ExtensionCleanupTests  $E/Service/ExtensionCleanup.swift \
                            $E/Service/ExtensionCatalog.swift \
+                           $E/Model/ExtensionEngine.swift \
                            Tinycast/Platform/AppDisplayName.swift \
                            $E/Model/ExtensionManifest.swift \
                            $E/Model/ExtensionLaunchType.swift \
@@ -783,11 +787,13 @@ run slow ExtensionTests    -parse-as-library \
                            $E/Model/ExtensionPickerItem.swift \
                            $E/Model/ExtensionSearchAccessory.swift \
                            $E/Service/ExtensionCatalog.swift \
+                           $E/Model/ExtensionEngine.swift \
                            $E/Service/ExtensionFetcher.swift \
                            Tinycast/Platform/ProcessExit.swift \
                            $E/Service/ExtensionIconCache.swift \
                            $E/Service/ExtensionNodeShims.swift \
                            $E/Service/ExtensionRuntime.swift \
+                           $E/Service/ExtensionCommandRuntime.swift \
                            $E/Service/ExtensionNameResolver.swift \
                            $E/Service/ExtensionWebSocketBridge.swift \
                            $E/UI/ExtensionAnimatedImage.swift \

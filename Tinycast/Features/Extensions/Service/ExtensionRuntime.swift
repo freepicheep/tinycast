@@ -12,11 +12,11 @@ protocol ExtensionHostAPI: AnyObject, Sendable {
 /// Where a running command's UI or failure lands. Every callback arrives on the main actor.
 @MainActor
 protocol ExtensionRuntimeDelegate: AnyObject {
-    func runtime(_ runtime: ExtensionRuntime, session: String, didRender tree: RenderTree)
-    func runtime(_ runtime: ExtensionRuntime, session: String, didFail message: String)
-    func runtime(_ runtime: ExtensionRuntime, session: String, navigationDepth: Int)
-    func runtime(_ runtime: ExtensionRuntime, session: String, didFinish: Void)
-    func runtime(_ runtime: ExtensionRuntime, log level: String, message: String)
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree)
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String)
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int)
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void)
+    func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String)
 }
 
 /// The one `JSContext` a command runs in; every touch is on `queue`, only values cross.
@@ -107,6 +107,21 @@ final class ExtensionRuntime: @unchecked Sendable {
             .invokeMethod("boot", withArguments: [payload])
     }
 
+    /// Reads the command's prebuilt bundle off the main actor, then mounts it.
+    func launch(
+        session: String, owner: InstalledExtension, command: ExtensionCommand,
+        context launchContext: ExtensionLaunchContext
+    ) async throws {
+        guard let bundle = owner.bundleURL(for: command) else {
+            throw ExtensionLaunchError.notBuilt(command.title)
+        }
+        let code = await Task.detached(priority: .userInitiated) {
+            (try? String(contentsOf: bundle, encoding: .utf8)) ?? ""
+        }.value
+        guard !code.isEmpty else { throw ExtensionLaunchError.notBuilt(command.title) }
+        await start(session: session, code: code, file: bundle, mode: command.mode, context: launchContext)
+    }
+
     /// Load and mount one command. `code` is its prebuilt CommonJS bundle.
     func start(
         session: String, code: String, file: URL, mode: ExtensionCommandMode,
@@ -125,7 +140,7 @@ final class ExtensionRuntime: @unchecked Sendable {
     }
 
     /// Pre-encoded: `[Any]` isn't Sendable, so only the JSON string crosses onto the queue.
-    func dispatch(session: String, handler: String, payload: String, completesSession: Bool = false) async {
+    func dispatch(session: String, handler: String, payload: String, completesSession: Bool) async {
         await onQueue { context in
             _ = context.objectForKeyedSubscript("__tinycast")?
                 .invokeMethod("dispatch", withArguments: [session, handler, payload, completesSession])
@@ -373,3 +388,5 @@ final class ExtensionRuntime: @unchecked Sendable {
         return String(decoding: data, as: UTF8.self)
     }
 }
+
+extension ExtensionRuntime: ExtensionCommandRuntime {}

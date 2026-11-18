@@ -87,15 +87,15 @@ struct ExtensionTests {
         var logs: [String] = []
         var finished = false
 
-        func runtime(_ runtime: ExtensionRuntime, session: String, didRender tree: RenderTree) {
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree) {
             trees.append(tree)
         }
-        func runtime(_ runtime: ExtensionRuntime, session: String, didFail message: String) {
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String) {
             failures.append(message)
         }
-        func runtime(_ runtime: ExtensionRuntime, session: String, navigationDepth: Int) {}
-        func runtime(_ runtime: ExtensionRuntime, session: String, didFinish: Void) { finished = true }
-        func runtime(_ runtime: ExtensionRuntime, log level: String, message: String) {
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int) {}
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) { finished = true }
+        func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {
             logs.append("[\(level)] \(message)")
         }
     }
