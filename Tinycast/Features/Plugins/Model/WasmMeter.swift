@@ -181,7 +181,7 @@ enum WasmMeter {
         var names: [String] = []
         for _ in 0..<(try reader.u32()) {
             let length = Int(try reader.u32())
-            names.append(String(decoding: try reader.bytes(length), as: UTF8.self))
+            names.append(String(bytes: try reader.bytes(length), encoding: .utf8) ?? "")
             _ = try reader.byte()
             _ = try reader.u32()
         }

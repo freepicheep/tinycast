@@ -193,7 +193,8 @@ struct WasmPluginTests {
         let warmStart = Date()
         let again = PluginCatalog.scan(URL(filePath: folder), cache: cache)
         print("      and from the cache in \(String(format: "%.3f", Date().timeIntervalSince(warmStart))) s")
-        check("a second scan reads the cache to the same result", again == Array(found.values).sorted { $0.plugin.id < $1.plugin.id })
+        let sorted = Array(found.values).sorted { $0.plugin.id < $1.plugin.id }
+        check("a second scan reads the cache to the same result", again == sorted)
     }
 
     // MARK: - A view: state, actions, navigation, storage
@@ -264,7 +265,8 @@ struct WasmPluginTests {
         let store = await action("store")
         check("LocalStorage and Cache read back what they wrote", store.host.saw("feedback.showHUD 42 cached"),
               store.host.log.joined(separator: " | "))
-        check("and write through to the host", store.host.saw("storage.set count 41") && store.host.saw("cache.set default last cached"))
+        check("and write through to the host",
+              store.host.saw("storage.set count 41") && store.host.saw("cache.set default last cached"))
 
         // A toast's button works while its command runs; the fixture's stays open a moment for it.
         let (toast, _) = await launch("kitchen", "toast")
@@ -280,7 +282,8 @@ struct WasmPluginTests {
 
         let sleepy = await action("sleepy")
         check("Task.sleep and two concurrent host calls both resolve",
-              sleepy.host.saw("feedback.showHUD woke clip clip"), sleepy.host.log.joined(separator: " | ") + (sleepy.recorder.failure ?? ""))
+              sleepy.host.saw("feedback.showHUD woke clip clip"),
+              sleepy.host.log.joined(separator: " | ") + (sleepy.recorder.failure ?? ""))
 
         let open = await action("open-scheme")
         await until { open.recorder.failure != nil }
@@ -359,7 +362,10 @@ struct WasmPluginTests {
         let host = TestHost()
         host.answers["fetch.request"] = ExtensionJSON.string(from: [
             "status": 200, "statusText": "OK", "headers": [:], "url": "https://hn.algolia.com",
-            "bodyBase64": Data(#"{"hits":[{"objectID":"1","title":"Wasm in Tinycast","url":"https://example.com/a","points":42,"num_comments":7,"created_at_i":0}]}"#.utf8).base64EncodedString()
+            "bodyBase64": Data(
+                (#"{"hits":[{"objectID":"1","title":"Wasm in Tinycast","url":"https://example.com/a","points":42,"#
+                    + #""num_comments":7,"created_at_i":0}]}"#).utf8
+            ).base64EncodedString()
         ])
         let (run, error) = await launch("hacker-news", "stories", host: host)
         check("its stories launch", error == nil, String(describing: error))

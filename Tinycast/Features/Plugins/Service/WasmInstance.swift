@@ -164,7 +164,7 @@ final class WasmInstance {
         // The pointer is the whole buffer's; a view into memory starts at its offset.
         let offset = JSObjectGetTypedArrayByteOffset(context, value.jsValueRef, nil)
         let length = JSObjectGetTypedArrayByteLength(context, value.jsValueRef, nil)
-        return String(decoding: UnsafeRawBufferPointer(start: base + offset, count: length), as: UTF8.self)
+        return String(bytes: UnsafeRawBufferPointer(start: base + offset, count: length), encoding: .utf8) ?? ""
     }
 
     private static func typedArray(_ data: Data, in context: JSContext) -> JSValue? {
@@ -200,7 +200,9 @@ final class WasmInstance {
           const bytesAt = (pointer, length) => new Uint8Array(buffer(), pointer, length);
           const view = () => new DataView(buffer());
           const EBADF = 8, ENOSYS = 52, ENOTCAPABLE = 76;
-          const zeroCounts = (count, size) => { const v = view(); v.setUint32(count, 0, true); v.setUint32(size, 0, true); return 0; };
+          const zeroCounts = (count, size) => {
+            const v = view(); v.setUint32(count, 0, true); v.setUint32(size, 0, true); return 0;
+          };
           const wasi = {
             args_sizes_get: zeroCounts, args_get: () => 0,
             environ_sizes_get: zeroCounts, environ_get: () => 0,
@@ -259,7 +261,8 @@ final class WasmInstance {
           instance = new WebAssembly.Instance(module, imports);
           const refuel = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array([
             0, 0x61, 0x73, 0x6d, 1, 0, 0, 0, 1, 5, 1, 0x60, 0, 1, 0x7e, 2, 7, 1, 1, 0x68, 1, 0x72, 0, 0,
-            7, 5, 1, 1, 0x72, 0, 0])), { h: { r: () => { if (host.overdue()) throw new Error("tinycast:deadline"); return 100000n; } } });
+            7, 5, 1, 1, 0x72, 0, 0])),
+            { h: { r: () => { if (host.overdue()) throw new Error("tinycast:deadline"); return 100000n; } } });
           instance.exports.tinycast_refuel.set(0, refuel.exports.r);
           instance.exports.tinycast_fuel.value = 100000n;
           return {

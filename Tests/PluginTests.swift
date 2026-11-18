@@ -57,7 +57,8 @@ struct PluginTests {
         let validate = context.evaluateScript("(b) => WebAssembly.validate(new Uint8Array(b))")!
         check("the metered module is valid WebAssembly", validate.call(withArguments: [metered])?.toBool() == true)
         let exports = context.evaluateScript(
-            "(b) => WebAssembly.Module.exports(new WebAssembly.Module(new Uint8Array(b))).map(e => e.name + ':' + e.kind).join(',')")!
+            "(b) => WebAssembly.Module.exports(new WebAssembly.Module(new Uint8Array(b)))"
+                + ".map(e => e.name + ':' + e.kind).join(',')")!
             .call(withArguments: [metered])?.toString() ?? ""
         check(
             "it exports the fuel global and the refuel table",
@@ -100,7 +101,8 @@ struct PluginTests {
               const i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(b)), {});
               const hook = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array([
                 0, 0x61, 0x73, 0x6d, 1, 0, 0, 0, 1, 5, 1, 0x60, 0, 1, 0x7e, 2, 7, 1, 1, 0x68, 1, 0x72, 0, 0,
-                7, 5, 1, 1, 0x72, 0, 0])), { h: { r: () => { refills++; if (refills > 3) throw new Error('stop'); return 1000n; } } });
+                7, 5, 1, 1, 0x72, 0, 0])),
+                { h: { r: () => { refills++; if (refills > 3) throw new Error('stop'); return 1000n; } } });
               i.exports.tinycast_refuel.set(0, hook.exports.r);
               i.exports.tinycast_fuel.value = 1000n;
               const sum = i.exports.add(2, 3);
