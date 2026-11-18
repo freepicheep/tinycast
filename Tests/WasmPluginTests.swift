@@ -369,6 +369,25 @@ struct WasmPluginTests {
               (run.recorder.failure ?? "") + host.log.joined(separator: " | "))
         check("fetching through the host", host.saw("fetch.request"))
         run.runtime.shutdown()
+
+        guard let cleanShot = found["cleanshot-x"], let manifest = try? cleanShot.plugin.manifest.get() else {
+            return check("the CleanShot X example is built", false)
+        }
+        check("CleanShot X declares its view and a command per tool",
+              manifest.commands.count == 20 && manifest.commands.first?.mode == .view
+                  && manifest.commands.first { $0.name == "capture-text" }?.keywords == ["ocr", "text recognition"],
+              "\(manifest.commands.count) commands")
+        let (tools, toolsError) = await launch("cleanshot-x", "cleanshot")
+        await until { tools.recorder.root != nil }
+        check("its list has a section per kind of tool",
+              toolsError == nil && tools.recorder.root?.children.filter { $0.type == "List.Section" }.count == 5,
+              String(describing: tools.recorder.root?.children.map(\.type)))
+        tools.runtime.shutdown()
+        let (capture, _) = await launch("cleanshot-x", "capture-area")
+        await until { capture.recorder.finished || capture.recorder.failure != nil }
+        check("a tool's command opens its CleanShot link", capture.host.saw("system.open cleanshot://capture-area"),
+              (capture.recorder.failure ?? "") + capture.host.log.joined(separator: " | "))
+        capture.runtime.shutdown()
     }
 }
 
