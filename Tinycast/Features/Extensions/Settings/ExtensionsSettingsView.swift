@@ -406,7 +406,7 @@ private struct ExtensionDisclosure: View {
         VStack(alignment: .leading, spacing: 0) {
             summary
             if isExpanded {
-                settings
+                ExtensionSettingsCard(installed: installed)
                     .padding(.top, Theme.Spacing.lg)
             }
         }
@@ -445,8 +445,22 @@ private struct ExtensionDisclosure: View {
         .id(SettingsTarget.row(.extensionsInstalled, installed.manifest.name))
     }
 
+    private var subtitle: String {
+        let count = installed.manifest.commands.count
+        let commands = String(localized: "\(count) commands")
+        let author = installed.manifest.author
+        return author.isEmpty ? commands : "\(commands) · \(author)"
+    }
+}
+
+/// An installed extension's or plugin's settings, shown under its row while it's open: launcher
+/// visibility and icon, preferences, and per command its alias, hotkey, visibility, menu bar item
+/// and background refresh. Engine-neutral, since the host runs both the same way.
+struct ExtensionSettingsCard: View {
+    let installed: InstalledExtension
+
     /// One `Grid` for every run: separate grids size columns apart, stranding controls.
-    private var settings: some View {
+    var body: some View {
         Grid(
             alignment: .leading, horizontalSpacing: Theme.Spacing.lg,
             verticalSpacing: Theme.Spacing.md
@@ -500,12 +514,6 @@ private struct ExtensionDisclosure: View {
         }
     }
 
-    private var subtitle: String {
-        let count = installed.manifest.commands.count
-        let commands = String(localized: "\(count) commands")
-        let author = installed.manifest.author
-        return author.isEmpty ? commands : "\(commands) · \(author)"
-    }
 }
 
 private struct SettingsCardRow<Control: View>: View {
@@ -731,6 +739,10 @@ private struct ExtensionIconRow: View {
     private var preview: some View {
         if let appearance {
             SymbolTile(symbol: appearance.symbol, side: Theme.Size.rowIcon)
+        } else if installed.engine == .plugin {
+            // A plugin names an SF Symbol, drawn as the launcher draws it.
+            IconTile(symbol: installed.manifest.icon ?? "puzzlepiece", tint: SettingsTab.plugins.tint)
+                .frame(width: Theme.Size.rowIcon, height: Theme.Size.rowIcon)
         } else {
             ExtensionIconView(
                 resolved: installed.iconPath.map { ExtensionImage.Resolved(source: .file($0)) },
