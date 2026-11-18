@@ -161,6 +161,9 @@ struct DeepLinkTests {
         expect(
             parse("tinycast://extensions/owner/demo/search?arguments=%7B%7D") == nil,
             "an extension link with input still falls through")
+        expect(
+            parse("tinycast://plugins/hacker-news/stories") == nil,
+            "plugin links fall through to the extension router")
         expect(resolve("tinycast://command") == nil, "a kind without an ID is not a command")
         expect(resolve("tinycast://command/") == nil, "an empty ID is not a command")
         expect(resolve("tinycast://command/nope") == nil, "an unknown command does not resolve")

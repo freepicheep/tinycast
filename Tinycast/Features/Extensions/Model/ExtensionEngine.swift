@@ -4,4 +4,8 @@
 enum ExtensionEngine: Sendable, Hashable {
     case javascript
     case plugin
+
+    /// What a plugin's name takes in the host: a Raycast extension's name can't contain a dot, so
+    /// the two never share storage, preferences, entry ids or deep links.
+    static let pluginNamePrefix = "plugin."
 }

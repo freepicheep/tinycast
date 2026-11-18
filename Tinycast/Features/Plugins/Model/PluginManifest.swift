@@ -260,7 +260,7 @@ extension PluginManifest {
 extension PluginManifest {
     /// The prefix that keeps a plugin's name apart from every Raycast extension's: their names
     /// can't hold a dot, so `plugin.hacker-news` is never one of them.
-    static let hostNamePrefix = "plugin."
+    static let hostNamePrefix = ExtensionEngine.pluginNamePrefix
 
     var hostName: String { Self.hostNamePrefix + name }
 

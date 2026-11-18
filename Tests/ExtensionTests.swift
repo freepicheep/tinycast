@@ -927,6 +927,30 @@ struct ExtensionTests {
             "a copied bare deeplink parses back to its command",
             copiedBare.flatMap(ExtensionDeepLink.parse)?.extensionCandidates == ["demo"],
             String(describing: copiedBare))
+        let plugin = ExtensionDeepLink.parse(url: URL(string: "tinycast://plugins/hacker-news/stories?launchType=background")!)
+        check(
+            "a plugin link names the plugin's host name",
+            plugin?.extensionName == "plugin.hacker-news" && plugin?.commandName == "stories" && plugin?.isPlugin == true
+                && plugin?.launchType == .background,
+            String(describing: plugin))
+        check(
+            "the host name reaches a plugin too",
+            ExtensionDeepLink.parse(url: URL(string: "tinycast-dev://extensions/plugin.hacker-news/stories")!)
+                == ExtensionDeepLink.parse(url: URL(string: "tinycast-dev://plugins/hacker-news/stories")!))
+        check(
+            "Raycast's schemes never reach a plugin",
+            ExtensionDeepLink.parse(url: URL(string: "raycast://plugins/hacker-news/stories")!) == nil
+                && ExtensionDeepLink.parse(url: URL(string: "raycast://extensions/plugin.hacker-news/stories")!) == nil)
+        check(
+            "a plugin's name can't smuggle in a host name",
+            ExtensionDeepLink.parse(url: URL(string: "tinycast://plugins/plugin.x/stories")!) == nil)
+        let copiedPlugin = ExtensionDeepLink.url(
+            extensionName: "plugin.hacker-news", commandName: "stories", arguments: ["q": "swift"], scheme: "tinycast")
+        check(
+            "a copied plugin link reads as plugins/ and parses back",
+            copiedPlugin?.absoluteString.hasPrefix("tinycast://plugins/hacker-news/stories") == true
+                && copiedPlugin.flatMap(ExtensionDeepLink.parse)?.arguments == ["q": "swift"],
+            String(describing: copiedPlugin))
         let typed = ["query": "a & b = c + d", "tag": "café ✓"]
         let copiedTyped = ExtensionDeepLink.url(
             extensionName: "demo", commandName: "search", arguments: typed, scheme: "tinycast")

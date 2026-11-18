@@ -70,8 +70,8 @@ final class ExtensionCoordinator {
 
     /// Resolved from the installed set: the launcher may never have been opened.
     func runExtensionCommand(entryID: String) {
-        guard settings.extensionsEnabled,
-            let entry = extensions.launcherEntry(forEntryID: entryID)
+        guard let entry = extensions.launcherEntry(forEntryID: entryID),
+            let (owner, _) = extensions.resolve(entry), mayRun(owner)
         else { return }
         // The shortcut's second press closes its command, as a mode command's does.
         if paletteCoordinator.isShowing(.extensionCommand),
@@ -93,19 +93,27 @@ final class ExtensionCoordinator {
 
     /// A `raycast://extensions/…` link: the same command the launcher would run, by slug.
     func runDeepLink(_ link: ExtensionDeepLink) {
-        guard settings.extensionsEnabled else {
-            core.showMessage(
-                String(localized: "Extensions are disabled — enable them in Settings"), tone: .danger)
-            return
-        }
         guard let (owner, command) = extensions.resolve(link) else {
             core.showMessage(
-                String(localized: "No installed extension provides '\(link.commandName)'"), tone: .danger)
+                link.isPlugin
+                    ? String(localized: "No plugin provides '\(link.commandName)'")
+                    : String(localized: "No installed extension provides '\(link.commandName)'"),
+                tone: .danger)
+            return
+        }
+        guard mayRun(owner) else {
+            core.showMessage(
+                String(localized: "Extensions are disabled — enable them in Settings"), tone: .danger)
             return
         }
         run(
             owner, command: command, arguments: link.arguments, fallbackText: link.fallbackText,
             launchType: link.launchType, launchContext: link.launchContext)
+    }
+
+    /// Raycast extensions answer to their own switch; a plugin is hosted only while plugins are on.
+    private func mayRun(_ owner: InstalledExtension) -> Bool {
+        owner.engine == .plugin || settings.extensionsEnabled
     }
 
     // MARK: - Managing one extension from the launcher

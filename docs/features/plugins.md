@@ -216,6 +216,16 @@ Launching a command makes a `StirPluginRuntime`, which the host drives like the 
    `ExtensionHostAPI`: the same toasts, HUDs, clipboard, windows, launches and storage a Raycast
    command reaches.
 
+A plugin command's deep link is `tinycast://plugins/<name>/<command>` (`tinycast-dev://` in Debug),
+with Raycast's `arguments`, `launchType` and `context` query items; Copy Deeplink gives that form.
+`ExtensionDeepLink` reads it as the host name `plugin.<name>`, which also works in an `extensions/`
+link. Raycast's schemes never reach a plugin. Hotkeys and deep links run a plugin's command whether
+or not Raycast extensions are switched on.
+
+Settings › Plugins opens each plugin to the same card as an extension's: show in launcher, launcher
+icon, preferences, and per command its alias, hotkey, visibility, menu bar toggle and background
+refresh. "Configure Plugin" in the launcher opens that card; "Show in Finder" replaces uninstall.
+
 The kit's compiled module is cached per process. The first launch costs about 0.5 s (release), and
 later launches under 10 ms. `PluginManager` warms that cache a moment after plugins are switched on.
 
