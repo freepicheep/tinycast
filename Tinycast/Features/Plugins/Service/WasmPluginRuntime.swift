@@ -14,6 +14,7 @@ final class WasmPluginRuntime: @unchecked Sendable {
     private let module: PluginModule
     private let hostAPI: ExtensionHostAPI
     private let appScheme: String
+    private let callBudget: Duration
     private let queue: DispatchQueue
     /// Set once before launch, read on the queue.
     private nonisolated(unsafe) weak var delegate: ExtensionRuntimeDelegate?
@@ -32,8 +33,13 @@ final class WasmPluginRuntime: @unchecked Sendable {
     /// What's kept of what the plugin printed, for the error report.
     private static let outputLimit = 16 * 1024
 
-    init(module: PluginModule, hostAPI: ExtensionHostAPI, appScheme: String, priority: DispatchQoS) {
+    /// `callBudget` is how long one call into the plugin may run before it is stopped.
+    init(
+        module: PluginModule, hostAPI: ExtensionHostAPI, appScheme: String, priority: DispatchQoS,
+        callBudget: Duration = .seconds(5)
+    ) {
         self.module = module
+        self.callBudget = callBudget
         self.hostAPI = hostAPI
         self.appScheme = appScheme
         queue = DispatchQueue(label: "com.tinycast.plugins.wasm", qos: priority, autoreleaseFrequency: .workItem)
@@ -56,7 +62,7 @@ final class WasmPluginRuntime: @unchecked Sendable {
                 throw PluginLaunchError(message: String(localized: "The plugin's module is gone; reload plugins."))
             }
             do {
-                instance = try WasmInstance(module: metered, imports: imports())
+                instance = try WasmInstance(module: metered, imports: imports(), budget: callBudget)
             } catch {
                 throw PluginLaunchError(message: error.description + reportedOutput())
             }

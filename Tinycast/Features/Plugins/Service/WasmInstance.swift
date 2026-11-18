@@ -159,10 +159,12 @@ final class WasmInstance {
     /// A `Uint8Array` view of the module's memory, decoded as UTF-8.
     private static func text(_ value: JSValue) -> String {
         guard let context = value.context?.jsGlobalContextRef,
-            let pointer = JSObjectGetTypedArrayBytesPtr(context, value.jsValueRef, nil)
+            let base = JSObjectGetTypedArrayBytesPtr(context, value.jsValueRef, nil)
         else { return "" }
+        // The pointer is the whole buffer's; a view into memory starts at its offset.
+        let offset = JSObjectGetTypedArrayByteOffset(context, value.jsValueRef, nil)
         let length = JSObjectGetTypedArrayByteLength(context, value.jsValueRef, nil)
-        return String(decoding: UnsafeRawBufferPointer(start: pointer, count: length), as: UTF8.self)
+        return String(decoding: UnsafeRawBufferPointer(start: base + offset, count: length), as: UTF8.self)
     }
 
     private static func typedArray(_ data: Data, in context: JSContext) -> JSValue? {
