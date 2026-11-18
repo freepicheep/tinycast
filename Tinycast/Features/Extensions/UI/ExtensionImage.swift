@@ -83,7 +83,7 @@ enum ExtensionImage {
         }
     }
 
-    /// An `Image.Source`: a string, a `{fileIcon}`, or a `{light, dark}` pair naming either.
+    /// An `Image.Source`: a string, a `{fileIcon}`, a plugin's `{systemImage}`, or a `{light, dark}` pair.
     private static func source(
         from value: RenderValue, assetsPath: String?, isDark: Bool
     ) -> Source? {
@@ -93,6 +93,10 @@ enum ExtensionImage {
         case .object(let fields):
             if let path = fields["fileIcon"]?.stringValue, !path.isEmpty {
                 return .fileIcon((path as NSString).expandingTildeInPath)
+            }
+            // A plugin names SF Symbols directly; Raycast's own icons arrive as `-16` strings.
+            if let symbol = fields["systemImage"]?.stringValue, !symbol.isEmpty {
+                return .symbol(symbol)
             }
             let preferred = fields[isDark ? "dark" : "light"] ?? fields[isDark ? "light" : "dark"]
             return preferred.flatMap { source(from: $0, assetsPath: assetsPath, isDark: isDark) }

@@ -875,6 +875,10 @@ struct ExtensionTests {
             "an oklch tint too",
             icon(#"{"source":"circle-16","tintColor":"oklch(62.8% 0.2577 29.23)"}"#).tint != nil)
 
+        let plugin = icon(#"{"source":{"systemImage":"arrowtriangle.up.fill"},"tintColor":"raycast-orange"}"#)
+        check("a plugin's SF Symbol resolves by name", plugin.source == .symbol("arrowtriangle.up.fill"))
+        check("and keeps its tint", plugin.tint == .orange)
+
         let bare = icon(#""checkmark-circle-16""#)
         check("a bare icon still resolves", bare.source == .symbol("checkmark.circle"))
         check("and carries no tint", bare.tint == nil)
