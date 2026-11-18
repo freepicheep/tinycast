@@ -1,5 +1,5 @@
 {
-  "originHash" : "4ddad12a647f245ee91f6d937ab5f88866114ffe209acc4776ba2b8094394e12",
+  "originHash" : "eb05e27193fe8903724c03f4d4b677e9e8cc7f953afbf8d67124ef01886db139",
   "pins" : [
     {
       "identity" : "stir",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/freepicheep/Stir.git",
       "state" : {
         "branch" : "tinycast-plugins",
-        "revision" : "4341ad3c15f20ddac54059aef7c35a19d5a7232e"
+        "revision" : "17e85f4cd00005595ed51230e81e6474cdb5f3c9"
       }
     },
     {
