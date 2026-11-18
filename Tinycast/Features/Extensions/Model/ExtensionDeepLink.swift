@@ -51,7 +51,8 @@ struct ExtensionDeepLink: Sendable, Equatable {
         // A plugin's link names the plugin as its folder does: `tinycast://plugins/hacker-news/stories`.
         if extensionName.hasPrefix(ExtensionEngine.pluginNamePrefix) {
             components.host = "plugins"
-            components.path = "/\(extensionName.dropFirst(ExtensionEngine.pluginNamePrefix.count))/\(commandName)"
+            components.path =
+                "/\(extensionName.dropFirst(ExtensionEngine.pluginNamePrefix.count))/\(commandName)"
         } else {
             components.host = "extensions"
             components.path = "/\(extensionName)/\(commandName)"
@@ -90,7 +91,10 @@ struct ExtensionDeepLink: Sendable, Equatable {
         if segments.count == 3, segments[0].lowercased() == "plugins" {
             guard isTinycast, !segments[1].contains("."), !segments[1].contains("/") else { return nil }
             segments = ["extensions", ExtensionEngine.pluginNamePrefix + segments[1], segments[2]]
-        } else if !isTinycast, segments.dropFirst().dropLast().contains(where: { $0.hasPrefix(ExtensionEngine.pluginNamePrefix) }) {
+        } else if !isTinycast,
+            segments.dropFirst().dropLast().contains(where: { $0.hasPrefix(ExtensionEngine.pluginNamePrefix) }
+            )
+        {
             return nil
         }
         guard segments.count >= 3, segments[0].lowercased() == "extensions" else { return nil }

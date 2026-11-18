@@ -94,7 +94,9 @@ struct ExtensionTests {
             failures.append(message)
         }
         func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int) {}
-        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) { finished = true }
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) {
+            finished = true
+        }
         func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {
             logs.append("[\(level)] \(message)")
         }
@@ -927,10 +929,12 @@ struct ExtensionTests {
             "a copied bare deeplink parses back to its command",
             copiedBare.flatMap(ExtensionDeepLink.parse)?.extensionCandidates == ["demo"],
             String(describing: copiedBare))
-        let plugin = ExtensionDeepLink.parse(url: URL(string: "tinycast://plugins/hacker-news/stories?launchType=background")!)
+        let plugin = ExtensionDeepLink.parse(
+            url: URL(string: "tinycast://plugins/hacker-news/stories?launchType=background")!)
         check(
             "a plugin link names the plugin's host name",
-            plugin?.extensionName == "plugin.hacker-news" && plugin?.commandName == "stories" && plugin?.isPlugin == true
+            plugin?.extensionName == "plugin.hacker-news" && plugin?.commandName == "stories"
+                && plugin?.isPlugin == true
                 && plugin?.launchType == .background,
             String(describing: plugin))
         check(
@@ -940,12 +944,15 @@ struct ExtensionTests {
         check(
             "Raycast's schemes never reach a plugin",
             ExtensionDeepLink.parse(url: URL(string: "raycast://plugins/hacker-news/stories")!) == nil
-                && ExtensionDeepLink.parse(url: URL(string: "raycast://extensions/plugin.hacker-news/stories")!) == nil)
+                && ExtensionDeepLink.parse(
+                    url: URL(string: "raycast://extensions/plugin.hacker-news/stories")!) == nil
+        )
         check(
             "a plugin's name can't smuggle in a host name",
             ExtensionDeepLink.parse(url: URL(string: "tinycast://plugins/plugin.x/stories")!) == nil)
         let copiedPlugin = ExtensionDeepLink.url(
-            extensionName: "plugin.hacker-news", commandName: "stories", arguments: ["q": "swift"], scheme: "tinycast")
+            extensionName: "plugin.hacker-news", commandName: "stories", arguments: ["q": "swift"],
+            scheme: "tinycast")
         check(
             "a copied plugin link reads as plugins/ and parses back",
             copiedPlugin?.absoluteString.hasPrefix("tinycast://plugins/hacker-news/stories") == true

@@ -265,7 +265,9 @@ extension PluginManifest {
     /// background refresh, arguments and preferences treat a plugin's commands as their own.
     func extensionManifest() -> ExtensionManifest? {
         func preference(_ preference: PluginPreference) -> [String: Any] {
-            var json: [String: Any] = ["name": preference.name, "type": preference.type, "title": preference.title]
+            var json: [String: Any] = [
+                "name": preference.name, "type": preference.type, "title": preference.title
+            ]
             json["label"] = preference.label
             json["description"] = preference.description
             json["placeholder"] = preference.placeholder
@@ -287,8 +289,10 @@ extension PluginManifest {
                     "keywords": command.keywords, "description": command.description ?? "",
                     "preferences": command.preferences.map(preference),
                     "arguments": command.arguments.map { argument -> [String: Any] in
-                        ["name": argument.name, "type": argument.type, "placeholder": argument.placeholder,
-                         "required": argument.required ?? false]
+                        [
+                            "name": argument.name, "type": argument.type, "placeholder": argument.placeholder,
+                            "required": argument.required ?? false
+                        ]
                     },
                     "disabledByDefault": command.disabledByDefault
                 ]

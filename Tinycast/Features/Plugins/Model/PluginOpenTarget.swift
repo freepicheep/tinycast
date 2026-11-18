@@ -6,7 +6,9 @@ enum PluginOpenTarget {
     static let alwaysAllowed: Set<String> = ["http", "https", "mailto"]
 
     /// Tinycast's own links run commands, and a file URL is spelled as a path instead.
-    private static let neverAllowed: Set<String> = ["tinycast", "tinycast-dev", "raycast", "com.raycast", "file"]
+    private static let neverAllowed: Set<String> = [
+        "tinycast", "tinycast-dev", "raycast", "com.raycast", "file"
+    ]
 
     /// RFC 3986's scheme grammar, minus the schemes no manifest may claim.
     static func isOpenableScheme(_ scheme: String) -> Bool {

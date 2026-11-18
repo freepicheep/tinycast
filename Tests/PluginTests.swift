@@ -28,11 +28,15 @@ struct PluginTests {
 
     // MARK: - Modules by hand
 
-    static func section(_ id: UInt8, _ body: [UInt8]) -> [UInt8] { [id] + WasmMeter.leb(UInt64(body.count)) + body }
+    static func section(_ id: UInt8, _ body: [UInt8]) -> [UInt8] {
+        [id] + WasmMeter.leb(UInt64(body.count)) + body
+    }
     static func name(_ text: String) -> [UInt8] { [UInt8(text.utf8.count)] + Array(text.utf8) }
 
     /// `spin` loops forever; `add` adds; memory starts at `pages`, with `maximum` if given.
-    static func module(pages: UInt8 = 1, maximum: UInt8? = nil, extraExport: String? = nil, body: [UInt8]? = nil) -> [UInt8] {
+    static func module(
+        pages: UInt8 = 1, maximum: UInt8? = nil, extraExport: String? = nil, body: [UInt8]? = nil
+    ) -> [UInt8] {
         let header: [UInt8] = [0, 0x61, 0x73, 0x6D, 1, 0, 0, 0]
         let types = section(1, [2, 0x60, 0, 0, 0x60, 2, 0x7F, 0x7F, 1, 0x7F])
         let functions = section(3, [2, 0, 1])
@@ -55,10 +59,13 @@ struct PluginTests {
         check("a plain module meters", true)
         let context = JSContext()!
         let validate = context.evaluateScript("(b) => WebAssembly.validate(new Uint8Array(b))")!
-        check("the metered module is valid WebAssembly", validate.call(withArguments: [metered])?.toBool() == true)
-        let exports = context.evaluateScript(
-            "(b) => WebAssembly.Module.exports(new WebAssembly.Module(new Uint8Array(b)))"
-                + ".map(e => e.name + ':' + e.kind).join(',')")!
+        check(
+            "the metered module is valid WebAssembly",
+            validate.call(withArguments: [metered])?.toBool() == true)
+        let exports =
+            context.evaluateScript(
+                "(b) => WebAssembly.Module.exports(new WebAssembly.Module(new Uint8Array(b)))"
+                    + ".map(e => e.name + ':' + e.kind).join(',')")!
             .call(withArguments: [metered])?.toString() ?? ""
         check(
             "it exports the fuel global and the refuel table",
@@ -82,20 +89,26 @@ struct PluginTests {
         } catch {
             check("an instruction the meter can't read is refused", error == .unsupportedOpcode(0xFB, nil))
         }
-        check("a file that isn't WebAssembly is refused", (try? WasmMeter.instrument(Array("hello".utf8), memoryCap: 16)) == nil)
+        check(
+            "a file that isn't WebAssembly is refused",
+            (try? WasmMeter.instrument(Array("hello".utf8), memoryCap: 16)) == nil)
         let maxed = (try? WasmMeter.instrument(module(maximum: 100), memoryCap: 16)) ?? []
-        let maximum = context.evaluateScript("""
+        let maximum = context.evaluateScript(
+            """
             (b) => { const i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(b)), {});
               try { i.exports.memory.grow(100); return 'grew'; } catch (e) { return 'capped'; } }
             """)!.call(withArguments: [maxed])?.toString()
-        check("memory can't grow past the cap, whatever the module declared", maximum == "capped", maximum ?? "")
+        check(
+            "memory can't grow past the cap, whatever the module declared", maximum == "capped", maximum ?? ""
+        )
     }
 
     /// The refuel hook stops a loop that never returns, and leaves a call that returns alone.
     static func meteredRunChecks() {
         guard let metered = try? WasmMeter.instrument(module(), memoryCap: 16) else { return }
         let context = JSContext()!
-        let result = context.evaluateScript("""
+        let result = context.evaluateScript(
+            """
             (b) => {
               let refills = 0;
               const i = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(b)), {});
@@ -115,46 +128,66 @@ struct PluginTests {
 
     // MARK: - What a plugin's calls may reach
 
-    static func manifest(_ permissions: Set<PluginPermission> = [], schemes: Set<String> = []) -> PluginManifest {
+    static func manifest(
+        _ permissions: Set<PluginPermission> = [], schemes: Set<String> = []
+    ) -> PluginManifest {
         PluginManifest(
-            name: "sample", title: "Sample", description: nil, icon: nil, author: nil, permissions: permissions,
+            name: "sample", title: "Sample", description: nil, icon: nil, author: nil,
+            permissions: permissions,
             urlSchemes: schemes, preferences: [], commands: [])
     }
 
     static func allowed(
-        _ api: String, _ method: String, _ arguments: [RenderValue] = [], _ manifest: PluginManifest = manifest()
+        _ api: String, _ method: String, _ arguments: [RenderValue] = [],
+        _ manifest: PluginManifest = manifest()
     ) -> Bool {
         PluginHostPolicy.refusal(api: api, method: method, arguments: arguments, manifest: manifest) == nil
     }
 
     static func policyChecks() {
-        check("storage, toasts and windows need no permission",
+        check(
+            "storage, toasts and windows need no permission",
             allowed("storage", "set") && allowed("feedback", "showToast") && allowed("window", "close")
                 && allowed("cache", "set") && allowed("form", "store") && allowed("oauth", "authorize"))
-        check("copying needs no permission; reading the clipboard does",
+        check(
+            "copying needs no permission; reading the clipboard does",
             allowed("clipboard", "copy") && !allowed("clipboard", "readText")
                 && allowed("clipboard", "readText", [], manifest([.clipboard])))
-        check("fetch needs the network permission",
+        check(
+            "fetch needs the network permission",
             !allowed("fetch", "request") && allowed("fetch", "request", [], manifest([.network])))
-        check("WebSockets and name lookups are the network too",
+        check(
+            "WebSockets and name lookups are the network too",
             !allowed("websocket", "open") && !allowed("dns", "resolve")
                 && allowed("websocket", "open", [], manifest([.network])))
-        check("a Unix socket is refused even with the network",
-            !allowed("fetch", "request", [.object(["socketPath": .string("/var/run/docker.sock")])], manifest([.network])))
-        check("the selection needs its permission",
-            !allowed("system", "selectedText") && allowed("system", "selectedFinderItems", [], manifest([.selection])))
-        check("web links and paths open; an app scheme only when declared",
+        check(
+            "a Unix socket is refused even with the network",
+            !allowed(
+                "fetch", "request", [.object(["socketPath": .string("/var/run/docker.sock")])],
+                manifest([.network])))
+        check(
+            "the selection needs its permission",
+            !allowed("system", "selectedText")
+                && allowed("system", "selectedFinderItems", [], manifest([.selection])))
+        check(
+            "web links and paths open; an app scheme only when declared",
             allowed("system", "open", [.string("https://example.com")])
                 && allowed("system", "open", [.string("/Applications")])
                 && !allowed("system", "open", [.string("cleanshot://capture")])
-                && allowed("system", "open", [.string("cleanshot://capture")], manifest(schemes: ["cleanshot"])))
-        check("Tinycast's own links never open, even when declared",
-            !allowed("system", "open", [.string("tinycast://extensions/x/y")], manifest(schemes: ["tinycast"])))
-        check("a plugin launches its own commands only",
+                && allowed(
+                    "system", "open", [.string("cleanshot://capture")], manifest(schemes: ["cleanshot"]))
+        )
+        check(
+            "Tinycast's own links never open, even when declared",
+            !allowed(
+                "system", "open", [.string("tinycast://extensions/x/y")], manifest(schemes: ["tinycast"])))
+        check(
+            "a plugin launches its own commands only",
             allowed("system", "launchCommand", [.object(["name": .string("a")])])
                 && allowed("system", "launchCommand", [.object(["extensionName": .string("plugin.sample")])])
                 && !allowed("system", "launchCommand", [.object(["extensionName": .string("plugin.other")])]))
-        check("processes and unknown APIs don't exist for plugins",
+        check(
+            "processes and unknown APIs don't exist for plugins",
             !allowed("proc", "wait") && !allowed("system", "runAppleScript") && !allowed("nope", "x"))
     }
 
@@ -165,24 +198,35 @@ struct PluginTests {
     }
 
     static func manifestChecks() {
-        let good = decode("""
+        let good = decode(
+            """
             {"name":"world-clock","title":"World Clock","permissions":["network"],
              "commands":[{"name":"clocks","title":"Clocks","mode":"view"},
                          {"name":"refresh","title":"Refresh","mode":"no-view","interval":"10m"}]}
             """)
         check("a manifest decodes", (try? good.get())?.commands.map(\.mode) == [.view, .action])
-        check("its host name keeps it apart from Raycast's", (try? good.get())?.hostName == "plugin.world-clock")
-        check("an unknown permission is refused",
+        check(
+            "its host name keeps it apart from Raycast's", (try? good.get())?.hostName == "plugin.world-clock"
+        )
+        check(
+            "an unknown permission is refused",
             decode(#"{"name":"a","title":"A","permissions":["files"],"commands":[{"name":"x","title":"X"}]}"#)
                 == .failure(.unknownPermission("files")))
-        check("a name with capitals is refused",
-            decode(#"{"name":"World","title":"A","commands":[{"name":"x","title":"X"}]}"#) == .failure(.invalidName("World")))
-        check("no commands is refused", decode(#"{"name":"a","title":"A","commands":[]}"#) == .failure(.noCommands))
-        check("a bad interval is refused",
+        check(
+            "a name with capitals is refused",
+            decode(#"{"name":"World","title":"A","commands":[{"name":"x","title":"X"}]}"#)
+                == .failure(.invalidName("World")))
+        check(
+            "no commands is refused",
+            decode(#"{"name":"a","title":"A","commands":[]}"#) == .failure(.noCommands))
+        check(
+            "a bad interval is refused",
             decode(#"{"name":"a","title":"A","commands":[{"name":"x","title":"X","interval":"often"}]}"#)
                 == .failure(.invalidInterval("often")))
-        check("Tinycast's scheme can't be claimed",
-            decode(#"{"name":"a","title":"A","urlSchemes":["tinycast"],"commands":[{"name":"x","title":"X"}]}"#)
+        check(
+            "Tinycast's scheme can't be claimed",
+            decode(
+                #"{"name":"a","title":"A","urlSchemes":["tinycast"],"commands":[{"name":"x","title":"X"}]}"#)
                 == .failure(.invalidURLScheme("tinycast")))
     }
 }

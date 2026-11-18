@@ -59,9 +59,12 @@ struct Kitchen: Plugin {
                 endpoint: "https://auth.example.com/authorize", clientID: "kitchen-client", scope: "read",
                 extraParameters: ["prompt": "consent"])
             let code = try await client.authorize(request)
-            try await client.setTokens(accessToken: "token-for-\(code)", refreshToken: "refresh", expiresIn: 3600)
+            try await client.setTokens(
+                accessToken: "token-for-\(code)", refreshToken: "refresh", expiresIn: 3600)
             guard let tokens = try await client.getTokens() else { return }
-            showHUD("\(tokens.accessToken) \(tokens.isExpired ? "expired" : "fresh") \(request.codeChallenge.count)")
+            showHUD(
+                "\(tokens.accessToken) \(tokens.isExpired ? "expired" : "fresh") \(request.codeChallenge.count)"
+            )
         }
         Command.menuBar("status", title: "Status", interval: "1m") { Status() }
     }

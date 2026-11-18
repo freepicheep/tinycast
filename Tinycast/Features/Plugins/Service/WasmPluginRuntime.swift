@@ -42,7 +42,8 @@ final class WasmPluginRuntime: @unchecked Sendable {
         self.callBudget = callBudget
         self.hostAPI = hostAPI
         self.appScheme = appScheme
-        queue = DispatchQueue(label: "com.tinycast.plugins.wasm", qos: priority, autoreleaseFrequency: .workItem)
+        queue = DispatchQueue(
+            label: "com.tinycast.plugins.wasm", qos: priority, autoreleaseFrequency: .workItem)
     }
 
     // MARK: - Launching
@@ -59,7 +60,8 @@ final class WasmPluginRuntime: @unchecked Sendable {
     private func start(session: String, command: String, payload: String) throws(PluginLaunchError) {
         if instance == nil {
             guard let metered = try? Data(contentsOf: module.meteredURL, options: .alwaysMapped) else {
-                throw PluginLaunchError(message: String(localized: "The plugin's module is gone; reload plugins."))
+                throw PluginLaunchError(
+                    message: String(localized: "The plugin's module is gone; reload plugins."))
             }
             do {
                 instance = try WasmInstance(module: metered, imports: imports(), budget: callBudget)
@@ -68,7 +70,9 @@ final class WasmPluginRuntime: @unchecked Sendable {
             }
         }
         self.session = session
-        guarded { try $0.call("tinycast_launch", [.number(Self.sessionNumber), .text(command), .text(payload)]) }
+        guarded {
+            try $0.call("tinycast_launch", [.number(Self.sessionNumber), .text(command), .text(payload)])
+        }
     }
 
     /// Runs one call into the plugin; a trap, an exit or a missed deadline ends the instance,
@@ -247,7 +251,8 @@ extension WasmPluginRuntime: ExtensionCommandRuntime {
             guard session == self.session else { return }
             self.guarded {
                 try $0.call(
-                    "tinycast_dispatch", [.text(handler), .text(payload), .number(completesSession ? 1.0 : 0.0)])
+                    "tinycast_dispatch",
+                    [.text(handler), .text(payload), .number(completesSession ? 1.0 : 0.0)])
             }
         }
     }

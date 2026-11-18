@@ -2,7 +2,8 @@
 
 A native macOS menu-bar launcher: fuzzy app launcher, global and per-app hotkeys, a text/image
 clipboard history, an inline calculator, a floating note, snippets, quicklinks, window management
-and an emoji picker. It also **runs Raycast extensions** natively, in JavaScriptCore.
+and an emoji picker. It also **runs Raycast extensions** natively, in JavaScriptCore, and **plugins**
+compiled to WebAssembly, in JavaScriptCore's WebAssembly engine.
 SwiftUI + AppKit, running as an accessory with no Dock icon (`LSUIElement`). Zero third-party
 dependencies.
 
@@ -103,6 +104,9 @@ feature's doc, under its own `## Invariants`.
   shape, and `Platform/`. What is never shared: anything with
   "how an extension looks or moves" in it. `ExtensionActionsPanel` and `ExtensionGridGeometry` exist
   precisely because the palette's own menu and the emoji grid must stay free to change without them.
+- **Plugins stay inside `Features/Plugins/`, for the same reason extensions stay in theirs.** A plugin
+  runs untrusted code, so it reaches Tinycast only through the host calls `PluginHostPolicy` lets
+  through, and its module only ever runs metered. See [plugins.md](docs/features/plugins.md).
 - **`AppEntry.Kind` is the only thing that says what an entry is.** One case per launcher section and
   per `VisibilityStore` category — never re-derive a category by sniffing an entry ID. Which _pane_
   lists a command is a separate fact, and `SettingsTab.ownedCommands` is the only place that states it.

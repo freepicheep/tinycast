@@ -38,7 +38,8 @@ final class DeepLinkCoordinator {
 
     func handles(_ url: URL) -> Bool {
         url.scheme?.lowercased() == scheme
-            && ![DeepLink.extensionsHost, DeepLink.pluginsHost].contains(url.host(percentEncoded: false)?.lowercased())
+            && ![DeepLink.extensionsHost, DeepLink.pluginsHost].contains(
+                url.host(percentEncoded: false)?.lowercased())
     }
 
     func open(_ url: URL, source: DeepLinkSource = .outside) {

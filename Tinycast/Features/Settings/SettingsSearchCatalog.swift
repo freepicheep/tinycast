@@ -108,7 +108,8 @@ enum SettingsSearchCatalog {
     static let entries: [SettingsSearchEntry] =
         general + applications + systemSettings + systemActions + commands + quicklinks
         + appleShortcuts + fallbacks + clipboard + snippets + fileSearch + windowManagement
-        + navigation + notes + calendar + emoji + ai + quickActions + dictation + extensions + plugins + permissions
+        + navigation + notes + calendar + emoji + ai + quickActions + dictation + extensions + plugins
+        + permissions
         + backup + about
 
     private static let general: [SettingsSearchEntry] = [

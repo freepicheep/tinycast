@@ -21,7 +21,9 @@ enum PluginHostPolicy {
             return needs(.clipboard)
         case ("fetch", _):
             // A Unix socket is a local service's own door, not the network the permission names.
-            if arguments.first?.objectValue?["socketPath"] != nil { return "a plugin can't reach a Unix socket" }
+            if arguments.first?.objectValue?["socketPath"] != nil {
+                return "a plugin can't reach a Unix socket"
+            }
             return needs(.network)
         case ("websocket", _), ("dns", _):
             return needs(.network)
@@ -36,8 +38,10 @@ enum PluginHostPolicy {
             return nil
         case ("system", "launchCommand"):
             let other = arguments.first?.objectValue?["extensionName"]?.stringValue
-            return other == nil || other == manifest.hostName ? nil : "a plugin can launch only its own commands"
-        case ("system", "openWith"), ("system", "showInFinder"), ("system", "trash"), ("system", "applications"),
+            return other == nil || other == manifest.hostName
+                ? nil : "a plugin can launch only its own commands"
+        case ("system", "openWith"), ("system", "showInFinder"), ("system", "trash"),
+            ("system", "applications"),
             ("system", "defaultApplication"), ("system", "frontmostApplication"),
             ("system", "updateCommandMetadata"):
             return nil

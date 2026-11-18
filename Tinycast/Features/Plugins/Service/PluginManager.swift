@@ -57,7 +57,8 @@ final class PluginManager {
     /// Each readable plugin as the Extensions host lists it.
     private func hostExtensions() -> [InstalledExtension] {
         installed.compactMap { plugin in
-            guard case .success(let manifest) = plugin.manifest, let host = manifest.extensionManifest() else {
+            guard case .success(let manifest) = plugin.manifest, let host = manifest.extensionManifest()
+            else {
                 return nil
             }
             return InstalledExtension(manifest: host, directory: plugin.directory, engine: .plugin)

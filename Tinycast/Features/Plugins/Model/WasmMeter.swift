@@ -83,7 +83,8 @@ enum WasmMeter {
             4: [0x70, 0x01, 0x01, 0x01],
             // i64, mutable, `i64.const 0`: the host fills it before the first call.
             6: [0x7E, 0x01, 0x42, 0x00, 0x0B],
-            7: name(fuelExport) + [0x03] + leb(UInt64(fuel)) + name(refuelExport) + [0x01] + leb(UInt64(table))
+            7: name(fuelExport) + [0x03] + leb(UInt64(fuel)) + name(refuelExport) + [0x01]
+                + leb(UInt64(table))
         ]
         let entryCounts: [UInt8: UInt64] = [1: 1, 4: 1, 6: 1, 7: 2]
         var placed: Set<UInt8> = []

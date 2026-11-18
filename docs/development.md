@@ -76,6 +76,20 @@ Consequences worth knowing:
   enable Hyper in one build at a time so their keyboard owners do not compete. An identical mapping
   already installed by another build is left unowned.
 
+## Plugins
+
+Plugins build with the [Swift SDK for WebAssembly](https://www.swift.org/documentation/articles/wasm-getting-started.html)
+and the swift.org toolchain of the same version; Xcode's compiler can't link WebAssembly. `brew install
+binaryen` adds `wasm-opt`, which `build-plugin.sh` uses to shrink modules when it's there.
+
+```sh
+./Scripts/build-plugin.sh Examples/Plugins/hacker-news \
+    ~/Library/Application\ Support/com.abueammar.tinycast.dev/Plugins/hacker-news
+./Scripts/test-plugins.sh
+```
+
+See [plugins.md](features/plugins.md).
+
 ## Editor
 
 Xcode works out of the box and needs nothing here. Everything below is optional, and which editor you

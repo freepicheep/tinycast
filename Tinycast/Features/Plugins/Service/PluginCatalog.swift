@@ -28,7 +28,8 @@ enum PluginCatalog {
     /// File IO, metering and describing every changed module: callers run it off the main actor.
     /// Cache entries no plugin uses any more are removed.
     nonisolated static func scan(
-        _ directory: URL = pluginsDirectory(), cache: URL = cacheDirectory(), fileManager: FileManager = .default
+        _ directory: URL = pluginsDirectory(), cache: URL = cacheDirectory(),
+        fileManager: FileManager = .default
     ) -> [Found] {
         guard
             let folders = try? fileManager.contentsOfDirectory(
@@ -38,20 +39,27 @@ enum PluginCatalog {
         var found: [Found] = []
         var kept: Set<String> = []
         for folder in folders.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-            guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
-            let moduleURL = folder.appending(path: InstalledPlugin.moduleFileName, directoryHint: .notDirectory)
+            guard (try? folder.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else {
+                continue
+            }
+            let moduleURL = folder.appending(
+                path: InstalledPlugin.moduleFileName, directoryHint: .notDirectory)
             guard let original = try? Data(contentsOf: moduleURL, options: .alwaysMapped) else { continue }
-            let key = "\(meterVersion)-" + SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
+            let key =
+                "\(meterVersion)-" + SHA256.hash(data: original).map { String(format: "%02x", $0) }.joined()
             kept.insert(key + ".wasm")
             kept.insert(key + ".json")
             let entry = load(original, key: key, cache: cache)
             let manifest = entry.flatMap { manifest -> Result<PluginManifest, PluginManifestError> in
                 manifest.name == folder.lastPathComponent
-                    ? .success(manifest) : .failure(.folderMismatch(folder: folder.lastPathComponent, name: manifest.name))
+                    ? .success(manifest)
+                    : .failure(.folderMismatch(folder: folder.lastPathComponent, name: manifest.name))
             }
             let plugin = InstalledPlugin(directory: folder, manifest: manifest)
             let module = (try? manifest.get()).map {
-                PluginModule(manifest: $0, meteredURL: cache.appending(path: key + ".wasm", directoryHint: .notDirectory))
+                PluginModule(
+                    manifest: $0,
+                    meteredURL: cache.appending(path: key + ".wasm", directoryHint: .notDirectory))
             }
             found.append(Found(plugin: plugin, module: module))
         }
@@ -64,10 +72,13 @@ enum PluginCatalog {
     }
 
     /// The cached manifest, or the module metered, written beside it and asked to describe itself.
-    private static func load(_ original: Data, key: String, cache: URL) -> Result<PluginManifest, PluginManifestError> {
+    private static func load(
+        _ original: Data, key: String, cache: URL
+    ) -> Result<PluginManifest, PluginManifestError> {
         let meteredURL = cache.appending(path: key + ".wasm", directoryHint: .notDirectory)
         let manifestURL = cache.appending(path: key + ".json", directoryHint: .notDirectory)
-        if FileManager.default.fileExists(atPath: meteredURL.path), let data = try? Data(contentsOf: manifestURL),
+        if FileManager.default.fileExists(atPath: meteredURL.path),
+            let data = try? Data(contentsOf: manifestURL),
             let manifest = try? PluginManifest.decode(data)
         {
             return .success(manifest)

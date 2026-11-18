@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds a plugin package into <destination>/plugin.wasm, ready to drop in the Plugins folder.
-#   Scripts/build-plugin.sh Examples/Plugins/hacker-news ~/Library/Application\ Support/Tinycast\ Dev/Plugins/hacker-news
+#   Scripts/build-plugin.sh Examples/Plugins/hacker-news <Plugins folder>/hacker-news
 # Needs the Swift SDK for WebAssembly and the swift.org toolchain of the same version; Xcode's
 # compiler can't link WebAssembly. TINYCAST_WASM_SDK picks an SDK when several are installed.
 set -euo pipefail

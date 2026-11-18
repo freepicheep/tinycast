@@ -133,7 +133,9 @@ final class WasmInstance {
         let output: @convention(block) (JSValue) -> Void = { imports.output(text($0)) }
         let random: @convention(block) (Int) -> JSValue? = { count in
             var bytes = Data(count: max(count, 0))
-            let status = bytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!) }
+            let status = bytes.withUnsafeMutableBytes {
+                SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!)
+            }
             precondition(status == errSecSuccess, "the system's random generator failed")
             return JSContext.current().flatMap { typedArray(bytes, in: $0) }
         }
@@ -164,7 +166,8 @@ final class WasmInstance {
         // The pointer is the whole buffer's; a view into memory starts at its offset.
         let offset = JSObjectGetTypedArrayByteOffset(context, value.jsValueRef, nil)
         let length = JSObjectGetTypedArrayByteLength(context, value.jsValueRef, nil)
-        return String(bytes: UnsafeRawBufferPointer(start: base + offset, count: length), encoding: .utf8) ?? ""
+        return String(bytes: UnsafeRawBufferPointer(start: base + offset, count: length), encoding: .utf8)
+            ?? ""
     }
 
     private static func typedArray(_ data: Data, in context: JSContext) -> JSValue? {

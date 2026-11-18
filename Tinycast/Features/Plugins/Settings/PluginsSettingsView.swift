@@ -59,7 +59,9 @@ struct PluginsSettingsView: View {
     /// The plugin as the Extensions host runs it, whose settings the row's card edits.
     private func hosted(_ plugin: InstalledPlugin) -> InstalledExtension? {
         guard case .success(let manifest) = plugin.manifest else { return nil }
-        return core.extensions.installed.first { $0.engine == .plugin && $0.manifest.name == manifest.hostName }
+        return core.extensions.installed.first {
+            $0.engine == .plugin && $0.manifest.name == manifest.hostName
+        }
     }
 }
 

@@ -147,30 +147,30 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
     private func startLanes() {
         guard menuBars == nil, let coordinator else { return }
         menuBars = ExtensionMenuBarManager(
-                storage: storage,
-                commandMetadata: commandMetadata,
-                supportDirectory: ExtensionCatalog.supportRoot(),
-                makeExecution: { [weak self, weak coordinator] owner, command, type in
-                    guard let self, let coordinator else { return nil }
-                    let host = ExtensionMenuBarHost(
-                        owner: owner, command: command, launchType: type, storage: self.storage,
-                        manager: self, coordinator: coordinator)
-                    let bridge = self.bridge.scoped(to: host)
-                    guard
-                        let runtime = self.makeRuntime(
-                            for: owner, hostAPI: bridge,
-                            priority: type == .background ? .utility : .userInitiated)
-                    else { return nil }
-                    return .init(
-                        runtime: runtime,
-                        stop: {
-                            bridge.context = nil
-                        }, enableInteraction: { host.enableInteraction() })
-                },
-                onError: { [weak coordinator] message, owner, needsPreferences in
-                    coordinator?.showHUD(message)
-                    if needsPreferences { coordinator?.showExtensionSettings(for: owner) }
-                })
+            storage: storage,
+            commandMetadata: commandMetadata,
+            supportDirectory: ExtensionCatalog.supportRoot(),
+            makeExecution: { [weak self, weak coordinator] owner, command, type in
+                guard let self, let coordinator else { return nil }
+                let host = ExtensionMenuBarHost(
+                    owner: owner, command: command, launchType: type, storage: self.storage,
+                    manager: self, coordinator: coordinator)
+                let bridge = self.bridge.scoped(to: host)
+                guard
+                    let runtime = self.makeRuntime(
+                        for: owner, hostAPI: bridge,
+                        priority: type == .background ? .utility : .userInitiated)
+                else { return nil }
+                return .init(
+                    runtime: runtime,
+                    stop: {
+                        bridge.context = nil
+                    }, enableInteraction: { host.enableInteraction() })
+            },
+            onError: { [weak coordinator] message, owner, needsPreferences in
+                coordinator?.showHUD(message)
+                if needsPreferences { coordinator?.showExtensionSettings(for: owner) }
+            })
     }
 
     func setShowsInLauncher(_ shows: Bool) {
