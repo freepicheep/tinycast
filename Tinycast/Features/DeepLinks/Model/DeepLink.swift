@@ -11,8 +11,9 @@ enum DeepLink: Equatable, Sendable {
     case chat(id: UUID)
     case windowSize(CustomWindowSize)
 
-    /// Extension links own this host, so built-in parsing must never claim it.
+    /// Extension and plugin links own these hosts, so built-in parsing must never claim them.
     static let extensionsHost = "extensions"
+    static let pluginsHost = "plugins"
     static let searchHost = "search"
     static let windowSizeHost = "window-size"
     private static let noteHost = "note"
@@ -70,7 +71,7 @@ enum DeepLink: Equatable, Sendable {
         case (windowSizeHost, true):
             guard case .named(let fields)? = input.arguments else { return nil }
             return CustomWindowSize(linkFields: fields).map { .windowSize($0) }
-        case (extensionsHost, _), (_, true):
+        case (extensionsHost, _), (pluginsHost, _), (_, true):
             return nil
         default:
             return HotKeyAction(entryID: host + ":" + path).map { .entry($0, input) }

@@ -105,20 +105,6 @@ struct ExtensionAlert: Sendable {
     }
 }
 
-enum ExtensionHostError: LocalizedError {
-    case noActiveExtension
-    case unknown(String)
-    case unsupported(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .noActiveExtension: return "No extension command is running."
-        case .unknown(let what): return "Unknown host call '\(what)'."
-        case .unsupported(let what): return "\(what) is not supported in Tinycast extensions."
-        }
-    }
-}
-
 @MainActor
 final class ExtensionHostBridge: ExtensionHostAPI {
     weak var context: ExtensionHostContext?
@@ -143,7 +129,7 @@ final class ExtensionHostBridge: ExtensionHostAPI {
     func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
         guard context != nil else { throw ExtensionHostError.noActiveExtension }
         let value = try await dispatch(api: api, method: method, arguments: arguments)
-        return ExtensionRuntime.jsonString(from: value)
+        return ExtensionJSON.string(from: value)
     }
 
     private func dispatch(api: String, method: String, arguments: [RenderValue]) async throws -> Any? {

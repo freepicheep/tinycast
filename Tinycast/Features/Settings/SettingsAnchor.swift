@@ -110,6 +110,11 @@ extension SettingsAnchor {
     static let calendarMenuBar = Self(tab: .calendar, title: "Menu Bar")
     static let calendarCalendars = Self(tab: .calendar, title: "Calendars")
 
+    static let pluginsPlugins = Self(tab: .plugins, title: "Plugins")
+    static let pluginsInstalled = Self(
+        tab: .plugins,
+        title: LocalizedStringResource("plugins-installed-section", defaultValue: "Installed"))
+
     static let extensionsExtensions = Self(tab: .extensions, title: "Extensions")
     static let extensionsCompatibility = Self(tab: .extensions, title: "Compatibility")
     static let extensionsInstalled = Self(

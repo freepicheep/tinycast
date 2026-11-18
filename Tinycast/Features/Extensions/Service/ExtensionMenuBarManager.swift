@@ -259,7 +259,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
             Task {
                 await active.runtime.dispatch(
                     session: session, handler: handler,
-                    payload: ExtensionRuntime.jsonString(from: [["type": type]]),
+                    payload: ExtensionJSON.string(from: [["type": type]]),
                     completesSession: true)
             }
         }

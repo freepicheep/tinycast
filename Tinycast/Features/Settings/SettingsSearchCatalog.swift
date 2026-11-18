@@ -108,7 +108,7 @@ enum SettingsSearchCatalog {
     static let entries: [SettingsSearchEntry] =
         general + applications + systemSettings + systemActions + commands + quicklinks
         + appleShortcuts + fallbacks + clipboard + snippets + fileSearch + windowManagement
-        + navigation + notes + calendar + emoji + ai + quickActions + dictation + extensions + permissions
+        + navigation + notes + calendar + emoji + ai + quickActions + dictation + extensions + plugins + permissions
         + backup + about
 
     private static let general: [SettingsSearchEntry] = [
@@ -607,6 +607,14 @@ enum SettingsSearchCatalog {
         .init(
             group: .calendarCalendars, "Calendars",
             keywords: ["accounts", "sources", "choose", "icloud", "google"])
+    ]
+
+    private static let plugins: [SettingsSearchEntry] = [
+        .init(pane: .plugins, keywords: ["wasm", "webassembly", "swift", "develop"]),
+        .init(.pluginsPlugins, "Enable plugins", keywords: ["wasm", "webassembly", "third party"]),
+        .init(
+            group: .pluginsInstalled, "Installed plugins",
+            keywords: ["folder", "permissions", "reload", "commands"])
     ]
 
     private static let extensions: [SettingsSearchEntry] = [

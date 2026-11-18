@@ -455,6 +455,7 @@ run ExtensionIconTests     Tinycast/Platform/Appearance.swift \
                            Tinycast/Features/Extensions/Service/ExtensionNodeShims.swift \
                            Tinycast/Features/Extensions/Service/ExtensionRuntime.swift \
                            Tinycast/Features/Extensions/Service/ExtensionCommandRuntime.swift \
+                           Tinycast/Features/Extensions/Model/ExtensionJSON.swift \
                            Tinycast/Features/Extensions/Service/ExtensionIconCache.swift \
                            Tinycast/Features/Extensions/UI/ExtensionAnimatedImage.swift \
                            Tinycast/Features/Extensions/UI/ExtensionImage.swift \
@@ -794,6 +795,8 @@ run slow ExtensionTests    -parse-as-library \
                            $E/Service/ExtensionNodeShims.swift \
                            $E/Service/ExtensionRuntime.swift \
                            $E/Service/ExtensionCommandRuntime.swift \
+                           $E/Model/ExtensionJSON.swift \
+                           $E/Model/ExtensionHostError.swift \
                            $E/Service/ExtensionNameResolver.swift \
                            $E/Service/ExtensionWebSocketBridge.swift \
                            $E/UI/ExtensionAnimatedImage.swift \
@@ -804,6 +807,17 @@ run slow ExtensionTests    -parse-as-library \
                            Tinycast/Features/Clipboard/Model/ColorValue.swift \
                            Tinycast/Features/Clipboard/Model/ColorSpaces.swift \
                            Tinycast/DesignSystem/IconTint.swift
+run PluginTests            Tinycast/Features/Plugins/Model/WasmMeter.swift \
+                           Tinycast/Features/Plugins/Model/PluginHostPolicy.swift \
+                           Tinycast/Features/Plugins/Model/PluginManifest.swift \
+                           Tinycast/Features/Plugins/Model/PluginOpenTarget.swift \
+                           $E/Model/ExtensionManifest.swift \
+                           $E/Model/ExtensionEngine.swift \
+                           $E/Model/ExtensionRefreshPolicy.swift \
+                           $E/Model/ExtensionJSON.swift \
+                           $E/Model/RenderNode.swift \
+                           $E/Model/ExtensionRefreshState.swift \
+                           Tinycast/Platform/AppDisplayName.swift
 run SettingsHistoryTests   Tinycast/Features/Settings/SettingsTab.swift \
                            Tinycast/Features/Settings/SettingsHistory.swift \
                            Tinycast/Features/Settings/SettingsAnchor.swift \

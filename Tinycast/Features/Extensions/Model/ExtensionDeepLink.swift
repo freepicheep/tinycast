@@ -21,6 +21,10 @@ struct ExtensionDeepLink: Sendable, Equatable {
     let launchType: ExtensionLaunchType
     let launchContext: [String: RenderValue]
 
+    /// A plugin's command: `tinycast://plugins/<name>/<command>`, or its host name in an
+    /// `extensions/` link.
+    var isPlugin: Bool { extensionName.hasPrefix(ExtensionEngine.pluginNamePrefix) }
+
     /// `owner/ext` first so a scoped manifest wins over a bare slug collision.
     var extensionCandidates: [String] {
         guard let ownerOrAuthor, !ownerOrAuthor.isEmpty else { return [extensionName] }
@@ -44,8 +48,14 @@ struct ExtensionDeepLink: Sendable, Equatable {
     ) -> URL? {
         var components = URLComponents()
         components.scheme = scheme
-        components.host = "extensions"
-        components.path = "/\(extensionName)/\(commandName)"
+        // A plugin's link names the plugin as its folder does: `tinycast://plugins/hacker-news/stories`.
+        if extensionName.hasPrefix(ExtensionEngine.pluginNamePrefix) {
+            components.host = "plugins"
+            components.path = "/\(extensionName.dropFirst(ExtensionEngine.pluginNamePrefix.count))/\(commandName)"
+        } else {
+            components.host = "extensions"
+            components.path = "/\(extensionName)/\(commandName)"
+        }
         if !arguments.isEmpty, let encoded = encodedArguments(arguments) {
             components.percentEncodedQueryItems = [URLQueryItem(name: "arguments", value: encoded)]
         }
@@ -75,6 +85,14 @@ struct ExtensionDeepLink: Sendable, Equatable {
         if let host = url.host, !host.isEmpty { segments.append(host) }
         segments += url.pathComponents.filter { $0 != "/" }
         segments = segments.map { $0.removingPercentEncoding ?? $0 }
+        // Plugins are Tinycast's alone: Raycast's schemes never reach one, by either spelling.
+        let isTinycast = ["tinycast", "tinycast-dev"].contains(url.scheme?.lowercased() ?? "")
+        if segments.count == 3, segments[0].lowercased() == "plugins" {
+            guard isTinycast, !segments[1].contains("."), !segments[1].contains("/") else { return nil }
+            segments = ["extensions", ExtensionEngine.pluginNamePrefix + segments[1], segments[2]]
+        } else if !isTinycast, segments.dropFirst().dropLast().contains(where: { $0.hasPrefix(ExtensionEngine.pluginNamePrefix) }) {
+            return nil
+        }
         guard segments.count >= 3, segments[0].lowercased() == "extensions" else { return nil }
         let body = Array(segments.dropFirst())
         guard body.count >= 2 else { return nil }

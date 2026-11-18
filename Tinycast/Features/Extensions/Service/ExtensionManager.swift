@@ -61,6 +61,8 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
     @ObservationIgnored private var backgroundSessionID: String?
     @ObservationIgnored private var backgroundRef: ExtensionCommandRef?
     @ObservationIgnored private var backgroundContinuation: CheckedContinuation<Bool, Never>?
+    /// A run that settled before anything waited for it; an engine may finish that quickly.
+    @ObservationIgnored private var backgroundEarlyResult: Bool?
     @ObservationIgnored private var backgroundFailure: String?
     @ObservationIgnored private var backgroundTask: Task<Void, Never>?
     @ObservationIgnored private var nextToastID = 1
@@ -191,6 +193,9 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         }
         menuBars?.synchronize(installed)
     }
+
+    /// What Settings › Extensions lists: plugins are the Plugins pane's.
+    var raycastInstalled: [InstalledExtension] { installed.filter { $0.engine == .javascript } }
 
     func extensionNamed(_ name: String) -> InstalledExtension? {
         installed.first { $0.manifest.name == name }
@@ -736,6 +741,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         backgroundSessionID = session
         backgroundRef = reference
         backgroundFailure = nil
+        backgroundEarlyResult = nil
         var succeeded = false
         defer {
             // Gone mid-run means uninstalled: recording would resurrect its storage file.
@@ -750,6 +756,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             backgroundRef = nil
             backgroundFailure = nil
             backgroundContinuation = nil
+            backgroundEarlyResult = nil
             publishLauncherEntries()
             storage.flush()
             commandMetadata.flush()
@@ -800,7 +807,8 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
 
     /// Suspends until the run settles, times out, or is preempted; `resumeBackground` is every exit.
     private func backgroundSettled() async -> Bool {
-        await withCheckedContinuation { continuation in backgroundContinuation = continuation }
+        if let result = backgroundEarlyResult { return result }
+        return await withCheckedContinuation { continuation in backgroundContinuation = continuation }
     }
 
     /// Ends the in-flight background run as a success so its schedule survives the preemption.
@@ -815,7 +823,10 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
 
     /// Main-actor serial, so no two of those exits can resume the same continuation.
     private func resumeBackground(with result: Bool) {
-        guard let continuation = backgroundContinuation else { return }
+        guard let continuation = backgroundContinuation else {
+            if backgroundSessionID != nil, backgroundEarlyResult == nil { backgroundEarlyResult = result }
+            return
+        }
         backgroundContinuation = nil
         continuation.resume(returning: result)
     }
@@ -824,7 +835,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
 
     func dispatch(handler: String, arguments: [Any] = []) {
         guard let sessionID else { return }
-        let payload = ExtensionRuntime.jsonString(from: arguments)
+        let payload = ExtensionJSON.string(from: arguments)
         Task { await runtime.dispatch(session: sessionID, handler: handler, payload: payload) }
     }
 

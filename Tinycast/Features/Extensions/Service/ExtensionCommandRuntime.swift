@@ -1,5 +1,24 @@
 import Foundation
 
+/// What a command's runtime reaches the app through: the JS→Swift seam, and a plugin's host
+/// object. Answers are JSON, so nothing non-`Sendable` crosses back to the JS queue.
+@MainActor
+protocol ExtensionHostAPI: AnyObject, Sendable {
+    func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String
+    /// The context is gone; release anything opened on its behalf.
+    func sessionEnded()
+}
+
+/// Where a running command's UI or failure lands. Every callback arrives on the main actor.
+@MainActor
+protocol ExtensionRuntimeDelegate: AnyObject {
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree)
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String)
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int)
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void)
+    func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String)
+}
+
 /// One command's runtime, as the palette, background and menu-bar lanes drive it. A runtime
 /// renders `RenderTree`s through its delegate, takes handler ids back, and reaches the app only
 /// through the `ExtensionHostAPI` it was made with.
