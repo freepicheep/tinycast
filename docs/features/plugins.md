@@ -292,3 +292,9 @@ errors, runaway loops, permission gating and `open` rules, using `Tests/PluginHo
 Translate checks call the live APIs, and are skipped when they're unreachable. Its sources are
 symlinks to `Features/Plugins` and the Extensions model files the runtime uses. The first run builds
 Scrift and swift-syntax and takes a few minutes.
+
+`./Scripts/bench-plugins.sh` compares the engines: `plugin-bench`, in the same package, runs one
+command under either the Raycast JS runtime or this one, a fresh runtime per launch as the palette
+does, and reports time to first render and to content, CPU, memory during the launch and retained
+after it. The JS versions are installed store extensions (Google Translate's only when
+`BENCH_JS_GOOGLE_TRANSLATE` points at a build of it).
