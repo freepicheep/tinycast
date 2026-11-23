@@ -31,15 +31,17 @@ enum PluginCapabilities {
     }
 
     /// `import Selection`, with the selection permission: Swift source over the host object, so a
-    /// plugin calls `selectedText()` as a function and the host knows whose session asks.
+    /// plugin calls `selectedText()` as a function and the host knows whose session asks. A context
+    /// holds its modules weakly, so the caller keeps the module until the plugin that imports it loads.
     @MainActor
-    static func loadSelection(into context: ScriftContext, hostAPI: ExtensionHostAPI) throws {
+    static func loadSelection(into context: ScriftContext, hostAPI: ExtensionHostAPI) throws -> ScriftModule {
         let module = try context.load(
             files: [SourceFile(name: "Selection.swift", text: selectionSource)], moduleName: "Selection")
         try module.run(limits: ScriftPluginRuntime.limits)
         let bind = try module.function(
             "_bind", as: ((PluginSelection) throws -> Void).self, limits: ScriftPluginRuntime.limits)
         try bind(PluginSelection(hostAPI: hostAPI))
+        return module
     }
 
     private static let selectionSource = """

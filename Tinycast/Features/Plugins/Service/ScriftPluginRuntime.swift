@@ -134,15 +134,17 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
             modules: PluginCapabilities.modules(for: plugin.permissions), cache: cache, output: output)
         let limits = Self.limits
         return try catching { () throws -> (context: ScriftContext, kit: ScriftModule, module: ScriftModule) in
-            if plugin.permissions.contains(.selection) {
-                try PluginCapabilities.loadSelection(into: context, hostAPI: hostAPI)
-            }
+            let selection =
+                plugin.permissions.contains(.selection)
+                ? try PluginCapabilities.loadSelection(into: context, hostAPI: hostAPI) : nil
             let kit = try context.load(
                 files: kitSources.files.map { SourceFile(name: $0.name, text: $0.text) }, moduleName: "Tinycast")
             try kit.run(limits: limits)
-            let module = try context.load(
-                files: sources.files.map { SourceFile(name: $0.name, text: $0.text) },
-                moduleName: InstalledPlugin.moduleName(for: plugin.name))
+            let module = try withExtendedLifetime(selection) {
+                try context.load(
+                    files: sources.files.map { SourceFile(name: $0.name, text: $0.text) },
+                    moduleName: InstalledPlugin.moduleName(for: plugin.name))
+            }
             try module.run(limits: limits)
             let registered = try kit.function(
                 "_tinycastRegistrations", as: (() throws -> [String: String]).self, limits: limits)()
