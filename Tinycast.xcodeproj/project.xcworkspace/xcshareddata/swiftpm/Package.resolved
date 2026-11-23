@@ -1,0 +1,24 @@
+{
+  "originHash" : "effeba6025d0aeb747ecf88bd5ca2a9a24bf7bd26c5600fe5156960aa6ca570a",
+  "pins" : [
+    {
+      "identity" : "scrift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/freepicheep/Scrift.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "fe72a3b5586b6ff57641f7bab4ba3e5982387ef6"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "050f1a346fbbac0ca2cfb15a95274f7bd1cf0ccf",
+        "version" : "604.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}

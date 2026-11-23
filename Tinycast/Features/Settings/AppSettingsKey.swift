@@ -69,6 +69,7 @@ enum AppSettingsKey: String, CaseIterable {
     case quicklinkConfirmsBeforeDelete = "quicklinkConfirmsBeforeDelete"
     case appleShortcutsEnabled = "appleShortcutsEnabled"
     case extensionsEnabled = "extensionsEnabled"
+    case pluginsEnabled = "pluginsEnabled"
     case extensionsShowInLauncher = "extensionsShowInLauncher"
     case extensionPackageManager = "extensionPackageManager"
     case extensionCustomSearchPaths = "extensionCustomSearchPaths"

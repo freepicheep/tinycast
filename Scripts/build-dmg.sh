@@ -13,7 +13,7 @@ if ! security find-identity -p codesigning | grep -q "$IDENTITY"; then
 fi
 
 echo "▸ Building signed Tinycast.app (Release)…"
-xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Release \
+xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Release -skipMacroValidation \
     -derivedDataPath "$DERIVED" \
     CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$IDENTITY" OTHER_CODE_SIGN_FLAGS="--timestamp=none" \
     ${1:+MARKETING_VERSION="$1"} \

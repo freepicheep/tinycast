@@ -51,6 +51,7 @@ open with an `## Invariants` section; read it before changing anything in that a
 [iCloud sync](features/icloud-sync.md) ·
 [Raycast import](features/raycast-import.md) ·
 [Raycast extensions](features/extensions.md) ·
+[plugins](features/plugins.md) ·
 [updates](features/updates.md) ·
 [support](features/support.md)
 

@@ -20,7 +20,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
     private var refreshTask: Task<Void, Never>?
 
     struct Execution {
-        let runtime: ExtensionRuntime
+        let runtime: any ExtensionCommandRuntime
         var stop: () -> Void
         var enableInteraction: () -> Void = {}
     }
@@ -41,7 +41,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
         let owner: InstalledExtension
         let mode: ExtensionCommandMode
         let execution: Execution
-        var runtime: ExtensionRuntime { execution.runtime }
+        var runtime: any ExtensionCommandRuntime { execution.runtime }
         var isLoading = true
         var pendingActions = 0
         var isInteractive: Bool
@@ -176,7 +176,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
         let missing = storage.missingRequiredPreferences(
             extension: owner.manifest.name,
             schemas: owner.manifest.preferences + command.preferences)
-        guard missing.isEmpty, let bundle = owner.bundleURL(for: command) else {
+        guard missing.isEmpty, owner.hasCode(for: command) else {
             let message =
                 missing.isEmpty
                 ? ExtensionLaunchError.notBuilt(command.title).localizedDescription
@@ -207,15 +207,14 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
             isDarkAppearance: NSApp.effectiveAppearance.isDark, launchContext: request.context)
         launchTask = Task { [weak self] in
             do {
-                let code = try await Task.detached(priority: .utility) {
+                try await Task.detached(priority: .utility) {
                     try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-                    return try String(contentsOf: bundle, encoding: .utf8)
                 }.value
                 guard !Task.isCancelled else { return }
                 try await runtime.boot(config: .current(supportDirectory: support))
                 guard !Task.isCancelled else { runtime.shutdown(); return }
-                await runtime.start(
-                    session: session.id, code: code, file: bundle, mode: command.mode, context: context)
+                try await runtime.launch(
+                    session: session.id, owner: owner, command: command, context: context)
             } catch {
                 self?.runtime(runtime, session: session.id, didFail: error.localizedDescription)
             }
@@ -260,7 +259,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
             Task {
                 await active.runtime.dispatch(
                     session: session, handler: handler,
-                    payload: ExtensionRuntime.jsonString(from: [["type": type]]),
+                    payload: ExtensionJSON.string(from: [["type": type]]),
                     completesSession: true)
             }
         }
@@ -355,7 +354,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
         return dates
     }
 
-    func runtime(_ runtime: ExtensionRuntime, session: String, didRender tree: RenderTree) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree) {
         guard let active, active.id == session else { return }
         let reference = active.request.reference
         let root = tree.activeRoot
@@ -392,7 +391,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
         releaseIfIdle()
     }
 
-    func runtime(_ runtime: ExtensionRuntime, session: String, didFail message: String) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String) {
         guard let active, active.id == session else { return }
         let reference = active.request.reference
         // Recorded as a failed refresh, so a broken item backs off instead of retrying.
@@ -407,16 +406,16 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
         runNext()
     }
 
-    func runtime(_ runtime: ExtensionRuntime, session: String, navigationDepth: Int) {}
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int) {}
 
-    func runtime(_ runtime: ExtensionRuntime, session: String, didFinish: Void) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) {
         guard let active, active.id == session else { return }
         active.pendingActions = max(0, active.pendingActions - 1)
         if active.mode == .noView { active.isLoading = false }
         releaseIfIdle()
     }
 
-    func runtime(_ runtime: ExtensionRuntime, log level: String, message: String) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {
         if level == "error" {
             Logger(subsystem: "com.tinycast", category: "extension-menu-bar").error(
                 "\(message, privacy: .public)")

@@ -92,7 +92,10 @@ enum RenderValue: Sendable, Hashable {
 
     /// How host-call arguments cross from the JS queue to the main actor as `Sendable`.
     static func arguments(from json: String) -> [RenderValue] {
-        ExtensionRuntime.jsonArray(from: json).map(RenderValue.init(json:))
+        guard let data = json.data(using: .utf8),
+            let array = try? JSONSerialization.jsonObject(with: data) as? [Any]
+        else { return [] }
+        return array.map(RenderValue.init(json:))
     }
 
     init(json: Any) {

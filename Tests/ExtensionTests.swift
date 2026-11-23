@@ -31,21 +31,21 @@ struct ExtensionTests {
         func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
             calls.append("\(api).\(method)")
             if api == "proc", method == "wait" {
-                return ExtensionRuntime.jsonString(
+                return ExtensionJSON.string(
                     from: try await ExtensionAsyncProcess.wait(arguments.first))
             }
             if api == "proc", method == "read" {
-                return ExtensionRuntime.jsonString(from: try await ExtensionAsyncProcess.read(arguments))
+                return ExtensionJSON.string(from: try await ExtensionAsyncProcess.read(arguments))
             }
             if api == "fetch" {
-                return ExtensionRuntime.jsonString(from: try await fetcher.request(arguments.first))
+                return ExtensionJSON.string(from: try await fetcher.request(arguments.first))
             }
             if api == "websocket" {
-                return ExtensionRuntime.jsonString(
+                return ExtensionJSON.string(
                     from: try await sockets.perform(method: method, arguments: arguments))
             }
             if api == "dns" {
-                return ExtensionRuntime.jsonString(from: await ExtensionNameResolver.resolve(arguments.first))
+                return ExtensionJSON.string(from: await ExtensionNameResolver.resolve(arguments.first))
             }
             switch "\(api).\(method)" {
             case "feedback.showToast":
@@ -87,15 +87,15 @@ struct ExtensionTests {
         var logs: [String] = []
         var finished = false
 
-        func runtime(_ runtime: ExtensionRuntime, session: String, didRender tree: RenderTree) {
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree) {
             trees.append(tree)
         }
-        func runtime(_ runtime: ExtensionRuntime, session: String, didFail message: String) {
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String) {
             failures.append(message)
         }
-        func runtime(_ runtime: ExtensionRuntime, session: String, navigationDepth: Int) {}
-        func runtime(_ runtime: ExtensionRuntime, session: String, didFinish: Void) { finished = true }
-        func runtime(_ runtime: ExtensionRuntime, log level: String, message: String) {
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int) {}
+        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) { finished = true }
+        func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {
             logs.append("[\(level)] \(message)")
         }
     }
@@ -927,6 +927,30 @@ struct ExtensionTests {
             "a copied bare deeplink parses back to its command",
             copiedBare.flatMap(ExtensionDeepLink.parse)?.extensionCandidates == ["demo"],
             String(describing: copiedBare))
+        let plugin = ExtensionDeepLink.parse(url: URL(string: "tinycast://plugins/hacker-news/stories?launchType=background")!)
+        check(
+            "a plugin link names the plugin's host name",
+            plugin?.extensionName == "plugin.hacker-news" && plugin?.commandName == "stories" && plugin?.isPlugin == true
+                && plugin?.launchType == .background,
+            String(describing: plugin))
+        check(
+            "the host name reaches a plugin too",
+            ExtensionDeepLink.parse(url: URL(string: "tinycast-dev://extensions/plugin.hacker-news/stories")!)
+                == ExtensionDeepLink.parse(url: URL(string: "tinycast-dev://plugins/hacker-news/stories")!))
+        check(
+            "Raycast's schemes never reach a plugin",
+            ExtensionDeepLink.parse(url: URL(string: "raycast://plugins/hacker-news/stories")!) == nil
+                && ExtensionDeepLink.parse(url: URL(string: "raycast://extensions/plugin.hacker-news/stories")!) == nil)
+        check(
+            "a plugin's name can't smuggle in a host name",
+            ExtensionDeepLink.parse(url: URL(string: "tinycast://plugins/plugin.x/stories")!) == nil)
+        let copiedPlugin = ExtensionDeepLink.url(
+            extensionName: "plugin.hacker-news", commandName: "stories", arguments: ["q": "swift"], scheme: "tinycast")
+        check(
+            "a copied plugin link reads as plugins/ and parses back",
+            copiedPlugin?.absoluteString.hasPrefix("tinycast://plugins/hacker-news/stories") == true
+                && copiedPlugin.flatMap(ExtensionDeepLink.parse)?.arguments == ["q": "swift"],
+            String(describing: copiedPlugin))
         let typed = ["query": "a & b = c + d", "tag": "café ✓"]
         let copiedTyped = ExtensionDeepLink.url(
             extensionName: "demo", commandName: "search", arguments: typed, scheme: "tinycast")
@@ -1373,7 +1397,7 @@ struct ExtensionTests {
         if let handler = actions.first?.handler {
             await runtime.dispatch(
                 session: "s1", handler: handler,
-                payload: ExtensionRuntime.jsonString(from: []))
+                payload: ExtensionJSON.string(from: []))
             await settle(until: {
                 recorder.trees.last.map {
                     ExtensionScreen(tree: $0, query: "").items.first?.node.string("title")
@@ -1571,7 +1595,7 @@ struct ExtensionTests {
 
         await runtime.dispatch(
             session: "sAccessory", handler: handler,
-            payload: ExtensionRuntime.jsonString(from: [initialValue]))
+            payload: ExtensionJSON.string(from: [initialValue]))
         await settle()
         let seededScreen = recorder.trees.last.map { ExtensionScreen(tree: $0, query: "") }
         check(
@@ -1636,7 +1660,7 @@ struct ExtensionTests {
                 return
             }
             await first.dispatch(
-                session: "sStore", handler: handler, payload: ExtensionRuntime.jsonString(from: [value]))
+                session: "sStore", handler: handler, payload: ExtensionJSON.string(from: [value]))
         }
         await settle()
         check("editing a form stores nothing", host.storedForms.isEmpty)
@@ -2014,7 +2038,7 @@ struct ExtensionTests {
         if let handler = actions.first?.handler {
             await runtime.dispatch(
                 session: "sAsync", handler: handler,
-                payload: ExtensionRuntime.jsonString(from: []))
+                payload: ExtensionJSON.string(from: []))
             await settle()
             screen = ExtensionScreen(tree: recorder.trees.last!, query: "")
             check(

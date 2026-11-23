@@ -5,6 +5,8 @@ struct InstalledExtension: Sendable, Hashable, Identifiable {
     let directory: URL
     /// Read by `scan`, off the main actor, so publishing launcher rows never touches the disk.
     var installedAt: Date?
+    /// A plugin's commands run in its feature's engine, never in JavaScriptCore.
+    var engine: ExtensionEngine = .javascript
 
     var id: String { manifest.name }
     var title: String { manifest.title }
@@ -26,6 +28,11 @@ struct InstalledExtension: Sendable, Hashable, Identifiable {
     }
 
     var assetsPath: String { directory.appendingPathComponent("assets").path }
+
+    /// Whether `command` has code to run; a plugin's engine finds its own when it launches.
+    func hasCode(for command: ExtensionCommand) -> Bool {
+        engine == .plugin || bundleURL(for: command) != nil
+    }
 
     func bundleURL(for command: ExtensionCommand) -> URL? {
         let url = directory.appendingPathComponent("\(command.name).js")

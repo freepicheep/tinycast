@@ -42,7 +42,14 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
     private let commandMetadata = ExtensionCommandMetadataStore(
         fileURL: ExtensionCatalog.commandMetadataFile())
     private let storeVersions = ExtensionVersionStore(fileURL: ExtensionCatalog.storeVersionsFile())
-    @ObservationIgnored private let runtime: ExtensionRuntime
+    /// The palette and background lanes' runtime, made for each launch's engine.
+    @ObservationIgnored private var runtime: any ExtensionCommandRuntime
+    /// Raycast extensions from `ExtensionCatalog`, while extensions are on.
+    @ObservationIgnored private var catalogInstalled: [InstalledExtension] = []
+    /// Plugins, which their own feature publishes here while plugins are on.
+    @ObservationIgnored private var pluginInstalled: [InstalledExtension] = []
+    /// The Plugins feature's engine; nil while plugins are off.
+    @ObservationIgnored private var makePluginRuntime: ExtensionPluginRuntimeFactory?
     @ObservationIgnored private let bridge: ExtensionHostBridge
     @ObservationIgnored private weak var appIndex: AppIndex?
     @ObservationIgnored private weak var coordinator: ExtensionCoordinator?
@@ -54,6 +61,8 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
     @ObservationIgnored private var backgroundSessionID: String?
     @ObservationIgnored private var backgroundRef: ExtensionCommandRef?
     @ObservationIgnored private var backgroundContinuation: CheckedContinuation<Bool, Never>?
+    /// A run that settled before anything waited for it; an engine may finish that quickly.
+    @ObservationIgnored private var backgroundEarlyResult: Bool?
     @ObservationIgnored private var backgroundFailure: String?
     @ObservationIgnored private var backgroundTask: Task<Void, Never>?
     @ObservationIgnored private var nextToastID = 1
@@ -64,6 +73,18 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         bridge = ExtensionHostBridge(clipboardStore: clipboardStore)
         runtime = ExtensionRuntime(hostAPI: bridge)
         bridge.context = self
+    }
+
+    /// Either source has something to run: the lanes exist only then.
+    private var isHosting: Bool { isEnabled || !pluginInstalled.isEmpty }
+
+    private func makeRuntime(
+        for owner: InstalledExtension, hostAPI: ExtensionHostAPI, priority: DispatchQoS = .userInitiated
+    ) -> (any ExtensionCommandRuntime)? {
+        switch owner.engine {
+        case .javascript: return ExtensionRuntime(hostAPI: hostAPI, priority: priority)
+        case .plugin: return makePluginRuntime?(owner, hostAPI, priority)
+        }
     }
 
     /// Wires collaborators only; the coordinator decides whether anything scans.
@@ -83,6 +104,32 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         guard enabled != isEnabled else { return }
         isEnabled = enabled
         guard enabled else {
+            catalogInstalled = []
+            await sourcesChanged()
+            return
+        }
+        startLanes()
+        await refresh()
+        ensureBackgroundLoop()
+    }
+
+    /// The Plugins feature's commands, run by its engine; an empty set while plugins are off.
+    func setPlugins(_ plugins: [InstalledExtension], makeRuntime: ExtensionPluginRuntimeFactory?) async {
+        makePluginRuntime = plugins.isEmpty ? nil : makeRuntime
+        guard plugins != pluginInstalled else { return }
+        pluginInstalled = plugins
+        if !plugins.isEmpty { startLanes() }
+        await sourcesChanged()
+    }
+
+    /// A source came or went: whatever it ran stops, and with neither left nothing is held.
+    private func sourcesChanged() async {
+        installed = catalogInstalled + pluginInstalled
+        if let running, extensionNamed(running.extensionName) == nil { await stop() }
+        if let backgroundRef, extensionNamed(backgroundRef.extensionName) == nil {
+            await abortBackgroundRun()
+        }
+        guard isHosting else {
             menuBars?.stop()
             menuBars = nil
             await stop()
@@ -92,8 +139,14 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             appIndex?.setExtensionCommands([])
             return
         }
-        if let coordinator {
-            menuBars = ExtensionMenuBarManager(
+        publishLauncherEntries()
+        restartBackgroundLoop()
+        menuBars?.synchronize(installed)
+    }
+
+    private func startLanes() {
+        guard menuBars == nil, let coordinator else { return }
+        menuBars = ExtensionMenuBarManager(
                 storage: storage,
                 commandMetadata: commandMetadata,
                 supportDirectory: ExtensionCatalog.supportRoot(),
@@ -103,10 +156,13 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
                         owner: owner, command: command, launchType: type, storage: self.storage,
                         manager: self, coordinator: coordinator)
                     let bridge = self.bridge.scoped(to: host)
+                    guard
+                        let runtime = self.makeRuntime(
+                            for: owner, hostAPI: bridge,
+                            priority: type == .background ? .utility : .userInitiated)
+                    else { return nil }
                     return .init(
-                        runtime: ExtensionRuntime(
-                            hostAPI: bridge,
-                            priority: type == .background ? .utility : .userInitiated),
+                        runtime: runtime,
                         stop: {
                             bridge.context = nil
                         }, enableInteraction: { host.enableInteraction() })
@@ -115,9 +171,6 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
                     coordinator?.showHUD(message)
                     if needsPreferences { coordinator?.showExtensionSettings(for: owner) }
                 })
-        }
-        await refresh()
-        ensureBackgroundLoop()
     }
 
     func setShowsInLauncher(_ shows: Bool) {
@@ -132,12 +185,13 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         guard isEnabled else { return }
         let found = await Task.detached(priority: .utility) { ExtensionCatalog.scan() }.value
         guard isEnabled else { return }
-        if found != installed {
-            installed = found
+        if found != catalogInstalled {
+            catalogInstalled = found
+            installed = catalogInstalled + pluginInstalled
             publishLauncherEntries()
             restartBackgroundLoop()
         }
-        menuBars?.synchronize(found)
+        menuBars?.synchronize(installed)
     }
 
     func extensionNamed(_ name: String) -> InstalledExtension? {
@@ -153,13 +207,11 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         return entry(for: command, in: owner)
     }
 
+    /// Raycast commands follow Show in launcher; a plugin's follow the Plugins feature alone.
     private func publishLauncherEntries() {
-        guard isEnabled, showsInLauncher else {
-            appIndex?.setExtensionCommands([])
-            return
-        }
+        let shown = (isEnabled && showsInLauncher ? catalogInstalled : []) + pluginInstalled
         let entries =
-            installed
+            shown
             .flatMap { owner in owner.manifest.commands.map { entry(for: $0, in: owner) } }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         appIndex?.setExtensionCommands(entries)
@@ -203,6 +255,11 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
     ) -> EntryIcon {
         if let appearance {
             return .tile(symbol: appearance.symbol, tint: SettingsTab.extensions.tint)
+        }
+        // A plugin names SF Symbols rather than shipping artwork.
+        if owner.engine == .plugin {
+            return .tile(
+                symbol: command.icon ?? owner.manifest.icon ?? "puzzlepiece", tint: SettingsTab.plugins.tint)
         }
         guard let path = commandIconPath(command, in: owner) ?? owner.iconPath else {
             return .symbol("puzzlepiece.extension")
@@ -400,14 +457,14 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         fallbackText: String? = nil, launchType: ExtensionLaunchType = .userInitiated,
         launchContext: [String: RenderValue] = [:]
     ) async {
-        guard isEnabled else { return }
+        guard isHosting else { return }
         if command.mode == .menuBar || (command.mode == .noView && launchType == .background) {
             menuBars?.run(
                 owner, command: command, arguments: arguments, type: launchType, context: launchContext)
             return
         }
         await stop()
-        guard isEnabled else { return }
+        guard isHosting else { return }
         let schemas = owner.manifest.preferences + command.preferences
         let missing = storage.missingRequiredPreferences(
             extension: owner.manifest.name, schemas: schemas)
@@ -418,19 +475,18 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
                 ExtensionLaunchError.missingPreferences(missing).localizedDescription)
             return
         }
-        guard let bundle = owner.bundleURL(for: command) else {
-            running = ExtensionCommandRef(
-                extensionName: owner.manifest.name, commandName: command.name)
-            state = .failed(ExtensionLaunchError.notBuilt(command.title).localizedDescription)
-            return
-        }
-
         running = ExtensionCommandRef(extensionName: owner.manifest.name, commandName: command.name)
         navigationDepth = 1
         state = .launching
 
         // The runtime holds one context: a background tick in flight yields to the manual run.
         await abortBackgroundRun()
+        guard let runtime = makeRuntime(for: owner, hostAPI: bridge) else {
+            state = .failed(ExtensionLaunchError.notBuilt(command.title).localizedDescription)
+            return
+        }
+        runtime.setDelegate(self)
+        self.runtime = runtime
 
         // Raycast activates the schedule on first manual open; the run itself is the first refresh.
         if ExtensionRefreshPolicy.isSchedulable(mode: command.mode, interval: command.interval) {
@@ -450,15 +506,6 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             return
         }
 
-        // Reading a few hundred KB of bundle is IO; keep it off the main actor.
-        let code = await Task.detached(priority: .userInitiated) {
-            (try? String(contentsOf: bundle, encoding: .utf8)) ?? ""
-        }.value
-        guard !code.isEmpty else {
-            state = .failed(ExtensionLaunchError.notBuilt(command.title).localizedDescription)
-            return
-        }
-
         let session = UUID().uuidString
         sessionID = session
         let context = makeLaunchContext(
@@ -467,8 +514,12 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             launchType: command.mode == .view ? .userInitiated : launchType,
             launchContext: launchContext)
 
-        await runtime.start(
-            session: session, code: code, file: bundle, mode: command.mode, context: context)
+        do {
+            try await runtime.launch(session: session, owner: owner, command: command, context: context)
+        } catch {
+            guard sessionID == session else { return }
+            state = .failed(error.localizedDescription)
+        }
     }
 
     private func makeLaunchContext(
@@ -594,7 +645,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
     /// Starts the loop once, and only when a command wants it: with nothing enabled there is
     /// no task at all, so an unused schedule costs nothing.
     private func ensureBackgroundLoop() {
-        guard isEnabled, backgroundTask == nil, hasEnabledBackgroundCommands else { return }
+        guard isHosting, backgroundTask == nil, hasEnabledBackgroundCommands else { return }
         backgroundTask = Task { [weak self] in await self?.backgroundLoop() }
     }
 
@@ -614,7 +665,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
     private func backgroundLoop() async {
         try? await Task.sleep(for: .seconds(5))
         while !Task.isCancelled {
-            guard isEnabled else { return }
+            guard isHosting else { return }
             await runDueBackgroundCommands()
             if Task.isCancelled { return }
             // The last schedule going away stops the loop itself; enabling restarts it.
@@ -654,7 +705,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         }
         guard !due.isEmpty else { return }
         for (owner, command) in due {
-            guard !Task.isCancelled, isEnabled, running == nil else { break }
+            guard !Task.isCancelled, isHosting, running == nil else { break }
             await runInBackground(owner, command: command)
         }
     }
@@ -683,7 +734,9 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         guard backgroundSessionID == nil, running == nil, let interval = command.interval else {
             return
         }
-        guard let bundle = owner.bundleURL(for: command) else { return }
+        guard let runtime = makeRuntime(for: owner, hostAPI: bridge, priority: .utility) else { return }
+        runtime.setDelegate(self)
+        self.runtime = runtime
         let reference = ExtensionCommandRef(
             extensionName: owner.manifest.name, commandName: command.name)
         let supportPath = ExtensionCatalog.supportPath(for: owner.manifest.name)
@@ -693,6 +746,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         backgroundSessionID = session
         backgroundRef = reference
         backgroundFailure = nil
+        backgroundEarlyResult = nil
         var succeeded = false
         defer {
             // Gone mid-run means uninstalled: recording would resurrect its storage file.
@@ -707,6 +761,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             backgroundRef = nil
             backgroundFailure = nil
             backgroundContinuation = nil
+            backgroundEarlyResult = nil
             publishLauncherEntries()
             storage.flush()
             commandMetadata.flush()
@@ -718,18 +773,15 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             backgroundFailure = error.localizedDescription
             return
         }
-        let code = await Task.detached(priority: .utility) {
-            (try? String(contentsOf: bundle, encoding: .utf8)) ?? ""
-        }.value
-        guard !code.isEmpty else {
-            backgroundFailure = ExtensionLaunchError.notBuilt(command.title).localizedDescription
-            return
-        }
         let context = makeLaunchContext(
             owner: owner, command: command, arguments: [:], supportPath: supportPath,
             launchType: .background)
-        await runtime.start(
-            session: session, code: code, file: bundle, mode: command.mode, context: context)
+        do {
+            try await runtime.launch(session: session, owner: owner, command: command, context: context)
+        } catch {
+            backgroundFailure = error.localizedDescription
+            return
+        }
         succeeded = await waitForBackgroundResult(
             timeout: ExtensionRefreshPolicy.timeout(interval: interval))
         // An abort already tore the session down; touching the runtime here would take the
@@ -760,7 +812,8 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
 
     /// Suspends until the run settles, times out, or is preempted; `resumeBackground` is every exit.
     private func backgroundSettled() async -> Bool {
-        await withCheckedContinuation { continuation in backgroundContinuation = continuation }
+        if let result = backgroundEarlyResult { return result }
+        return await withCheckedContinuation { continuation in backgroundContinuation = continuation }
     }
 
     /// Ends the in-flight background run as a success so its schedule survives the preemption.
@@ -775,7 +828,10 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
 
     /// Main-actor serial, so no two of those exits can resume the same continuation.
     private func resumeBackground(with result: Bool) {
-        guard let continuation = backgroundContinuation else { return }
+        guard let continuation = backgroundContinuation else {
+            if backgroundSessionID != nil, backgroundEarlyResult == nil { backgroundEarlyResult = result }
+            return
+        }
         backgroundContinuation = nil
         continuation.resume(returning: result)
     }
@@ -784,7 +840,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
 
     func dispatch(handler: String, arguments: [Any] = []) {
         guard let sessionID else { return }
-        let payload = ExtensionRuntime.jsonString(from: arguments)
+        let payload = ExtensionJSON.string(from: arguments)
         Task { await runtime.dispatch(session: sessionID, handler: handler, payload: payload) }
     }
 
@@ -844,7 +900,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
 
     // MARK: - ExtensionRuntimeDelegate
 
-    func runtime(_ runtime: ExtensionRuntime, session: String, didRender tree: RenderTree) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree) {
         guard session == sessionID else { return }
         if let current = coordinator?.extensionSearch,
             let search = searchState.navigate(to: tree.depth, current: current)
@@ -856,7 +912,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         seedSearchBarAccessory(in: tree)
     }
 
-    func runtime(_ runtime: ExtensionRuntime, session: String, didFail message: String) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String) {
         if session == backgroundSessionID {
             backgroundFailure = message
             resumeBackground(with: false)
@@ -866,12 +922,12 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         state = .failed(message)
     }
 
-    func runtime(_ runtime: ExtensionRuntime, session: String, navigationDepth depth: Int) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth depth: Int) {
         guard session == sessionID else { return }
         navigationDepth = depth
     }
 
-    func runtime(_ runtime: ExtensionRuntime, session: String, didFinish: Void) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) {
         if session == backgroundSessionID {
             resumeBackground(with: true)
             return
@@ -882,7 +938,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         Task { await stop() }
     }
 
-    func runtime(_ runtime: ExtensionRuntime, log level: String, message: String) {
+    func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {
         #if DEBUG
             print("[extension \(level)] \(message)")
         #endif
@@ -1003,7 +1059,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
         guard let owningName, let owner = extensionNamed(owningName),
             let command = owner.command(named: name)
         else { throw ExtensionLaunchError.unknownCommand(name) }
-        guard isEnabled else { throw ExtensionLaunchError.unsupported("Extensions are disabled.") }
+        guard isHosting else { throw ExtensionLaunchError.unsupported("Extensions are disabled.") }
         guard launchType != .background || command.mode != .view else {
             throw ExtensionLaunchError.unsupported("A view command cannot run in the background.")
         }

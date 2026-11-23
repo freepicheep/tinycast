@@ -232,6 +232,8 @@ final class SettingsProcessController {
             send(makeStatus())
         case .setExtensionPreference(let name, let key, let value):
             core.extensions.storage.setPreference(extension: name, key: key, value: value)
+        case .reloadPlugins:
+            Task { await core.plugins.refresh() }
         case .discardBackup(let id):
             if stagedBackup?.preview.id == id { discardStagedBackup() }
         case .checkForUpdates:
