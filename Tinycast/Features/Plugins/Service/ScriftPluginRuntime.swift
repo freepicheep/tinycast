@@ -222,6 +222,7 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
         } catch {
             return fail(error)
         }
+        await loaded.environment.callsAnswered()
         guard self.session == session else { return }
         delegate?.runtime(self, session: session, didFinish: ())
     }
@@ -271,8 +272,8 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
     }
 
     func drainHostCalls() async {
-        guard pump != nil else { return }
-        await withCheckedContinuation { idleWaiters.append($0) }
+        if pump != nil { await withCheckedContinuation { idleWaiters.append($0) } }
+        await loaded?.environment.callsAnswered()
     }
 
     func shutdown() {

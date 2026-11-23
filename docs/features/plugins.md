@@ -207,7 +207,8 @@ Launching a command makes a `ScriftPluginRuntime`, which the host drives like th
    `_tinycastRegistrations` is checked against the manifest.
 3. `_tinycastBegin` hands the kit the session's `PluginEnvironment` and the launch (arguments,
    preferences, launch type and context). A view or menu bar command opens with `_tinycastOpen` and
-   renders with `_tinycastRender`; an action runs `_tinycastRun` to its end, its tasks included.
+   renders with `_tinycastRender`; an action runs `_tinycastRun` to its end, its tasks included, and
+   finishes once the host has answered the calls it fired (a copy or a HUD it ends with).
 4. `PluginRenderer` turns each `PluginNode` tree into a `RenderTree` the host draws as it draws an
    extension's. `PluginEnvironment.invalidate()` (state changed) coalesces into one render after the
    script call. The host sends handler ids back through `dispatch`, Escape through `popNavigation`,

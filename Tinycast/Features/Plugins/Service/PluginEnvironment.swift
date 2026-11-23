@@ -21,6 +21,9 @@ final class PluginEnvironment {
     private var toastActions: [String: () throws -> Void] = [:]
     private var nextToastAction = 1
     private var onError: (any Error) -> Void = { _ in }
+    /// Fire-and-forget calls not yet answered, and who waits for none to be left.
+    private var callsInFlight = 0
+    private var callWaiters: [CheckedContinuation<Void, Never>] = []
 
     private init() {}
 
@@ -326,17 +329,35 @@ final class PluginEnvironment {
         return .object(payload)
     }
 
-    /// Fire and forget: a failure is the plugin's, reported on its screen.
+    /// Fire and forget: a failure is the plugin's, reported on its screen. The runtime waits for
+    /// these (`callsAnswered`) before it says a command finished, so a copy or a HUD an action
+    /// ends with reaches the app before its session stops.
     private func call(_ api: String, _ method: String, _ arguments: [RenderValue]) {
         guard let hostAPI else { return }
         let report = onError
+        callsInFlight += 1
         Task { @MainActor in
             do {
                 _ = try await hostAPI.perform(api: api, method: method, arguments: arguments)
             } catch {
                 report(error)
             }
+            self.callAnswered()
         }
+    }
+
+    private func callAnswered() {
+        callsInFlight -= 1
+        guard callsInFlight == 0 else { return }
+        let waiters = callWaiters
+        callWaiters = []
+        waiters.forEach { $0.resume() }
+    }
+
+    /// Returns once every fire-and-forget call made so far has been answered.
+    func callsAnswered() async {
+        guard callsInFlight > 0 else { return }
+        await withCheckedContinuation { callWaiters.append($0) }
     }
 
     private func perform(
