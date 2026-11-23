@@ -700,6 +700,75 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
     }
     await top.stop()
 
+    // MARK: The Google Translate example, against the live API
+
+    let translate = manifest(at: "google-translate")
+    check("Google Translate declares Raycast's seven commands", translate.commands.count == 7)
+    let german: [String: ExtensionPreferenceValue] = [
+        "langFrom": .string("auto"), "lang1": .string("de"), "lang2": .string("fr"), "autoInput": .bool(true),
+        "defaultAction": .string("copy"), "prioritizeCrossLanguage": .bool(false)
+    ]
+    func pair(_ item: RenderNode?) -> String? {
+        item?.array("accessories").first?.objectValue?["text"]?.stringValue
+    }
+    let selecting = TestHost()
+    selecting.answers["system.selectedText"] = #""Good morning""#
+    let translating = await started(
+        translate, "translate", fixture: "google-translate", host: selecting, preferences: german)
+    await until(seconds: 15) { !translating.all("List.Item").isEmpty || translating.host.saw("feedback.showToast") }
+    if translating.host.saw("feedback.showToast") {
+        print("SKIP  Google Translate is unreachable from here: \(translating.host.log.last ?? "")")
+    } else {
+        check("Translate fills its field from the selection", translating.root?.string("searchText") == "Good morning")
+        let there = translating.all("List.Item").map { $0.string("title") ?? "" }
+        check("and translates it there and back", there.count == 2 && there[0].contains("Morgen"))
+        check("each row names its pair", pair(translating.all("List.Item").first) == "English -> German")
+        let actions = translating.all("List.Item").first?.node("actions")
+        check("↵ copies the translation", actions?.children.first?.children.first?.string("title") == "Copy Translation")
+        check(
+            "and the language sets are a ⌘L away",
+            actions.flatMap { Run.find("Action", "Manage Language Sets…", in: $0) } != nil)
+        await translating.fire(translating.root, "onSearchTextChange", ["Good night"])
+        await until(seconds: 15) { translating.all("List.Item").first?.string("title")?.contains("Nacht") == true }
+        check("typing translates again", translating.all("List.Item").first?.string("title")?.contains("Nacht") == true)
+        let sets = translating.root?.node("searchBarAccessory")
+        await translating.fire(sets, "onChange", ["auto:de,fr"])
+        await until(seconds: 15) { pair(translating.all("List.Item").last) == "English -> French" }
+        check(
+            "a set with two targets translates into each",
+            translating.all("List.Item").map(pair) == ["English -> German", "English -> French"])
+        await translating.stop()
+
+        let form = await started(translate, "translate-form", fixture: "google-translate", preferences: german)
+        await form.fire(form.find("Form.TextArea", "Text"), "onTinycastChange", ["Thank you"])
+        await until(seconds: 15) { form.find("Form.TextArea", "Translation")?.string("value")?.isEmpty == false }
+        check("the form translates its text", form.find("Form.TextArea", "Translation")?.string("value") == "Danke")
+        await form.stop()
+
+        let quick = await started(translate, "quick-translate", fixture: "google-translate", host: selecting)
+        await until { quick.recorder.finished || quick.recorder.failure != nil }
+        check("Quick Translate hands the selection on", quick.host.saw("system.launchCommand"))
+        check("as its results' launch text", quick.host.log.contains { $0.contains(#""text":"Good morning""#) })
+        let results = await started(
+            translate, "quick-translate-view", fixture: "google-translate", preferences: german,
+            launchContext: ["text": .string("Good morning")])
+        await until(seconds: 15) { results.all("List.Item").count == 2 }
+        check("Quick Translate Results shows each target", results.all("List.Item").map(pair) == ["German", "French"])
+        check("with the detail open", results.root?.bool("isShowingDetail") == true)
+        await results.stop()
+
+        let copying = await started(
+            translate, "instant-translate-copy", fixture: "google-translate", host: selecting, preferences: german)
+        await until(seconds: 15) { copying.recorder.finished || copying.recorder.failure != nil }
+        check(
+            "Instant Translate Copy copies the translation",
+            copying.host.log.contains { $0.hasPrefix("clipboard.copy") && $0.contains("Morgen") })
+        check("and says so", copying.host.saw("feedback.showHUD ✓ Copied To Clipboard"))
+        let nothing = await started(translate, "instant-translate-paste", fixture: "google-translate")
+        await until { nothing.recorder.finished || nothing.recorder.failure != nil }
+        check("with nothing selected it says so", nothing.host.saw("feedback.showHUD No text selected"))
+    }
+
     print(failures == 0 ? "All plugin host checks passed." : "\(failures) plugin host checks failed.")
     exit(failures == 0 ? 0 : 1)
 }

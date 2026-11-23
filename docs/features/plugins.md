@@ -133,7 +133,7 @@ Without `.searchable`, Tinycast filters the rows by title, subtitle and `.keywor
 `.searchable(text: $query)`, the plugin gets each keystroke and filters its rows itself, usually
 with `.task(id: query)`, which cancels and restarts its work as the query changes.
 
-Two complete plugins are in [`Examples/Plugins`](../../Examples/Plugins). Copy either folder into the
+Three complete plugins are in [`Examples/Plugins`](../../Examples/Plugins). Copy a folder into the
 Plugins folder to install it:
 
 - **`hacker-news`** (port of Raycast's Hacker News): front page, newest, Ask HN and Show HN from HN's
@@ -143,6 +143,11 @@ Plugins folder to install it:
 - **`cleanshot-x`** (port of Raycast's CleanShot X): every CleanShot X tool as a launcher command, plus
   a list of them whose ⌘K menu says what to do with the capture. Shows `.openURLs` and action
   commands registered in a loop.
+- **`google-translate`** (port of Raycast's Google Translate): translate there and back or into a
+  saved set of languages as you type, a form, Quick Translate into every target at once, and instant
+  copy, paste and HUD actions on the selection. Shows `.selection`, `launchCommand` with a context,
+  debounced `.task(id:)`, a `Form` whose bindings start tasks, and `@AppStorage` sets. Text to speech
+  is left out: it needs a child process.
 
 ## The kit
 
@@ -283,7 +288,7 @@ cache, the translation into the host's manifest, registration checks, rendering 
 component shapes, bindings, navigation, storage, forms with stored values, grids and their dropdown,
 menu bar commands, preferences, toasts and their actions, `launchCommand`, action commands, compile
 errors, runaway loops, permission gating and `open` rules, using `Tests/PluginHost/Fixtures` and
-`Examples/Plugins`. It then runs `tinycast-plugin dump` on every example. The Hacker News checks call
-the live API, and are skipped when it's unreachable. Its sources are symlinks to `Features/Plugins`
-and the Extensions model files the runtime uses. The first run builds Scrift and swift-syntax and takes
-a few minutes.
+`Examples/Plugins`. It then runs `tinycast-plugin dump` on every example. The Hacker News and Google
+Translate checks call the live APIs, and are skipped when they're unreachable. Its sources are
+symlinks to `Features/Plugins` and the Extensions model files the runtime uses. The first run builds
+Scrift and swift-syntax and takes a few minutes.
