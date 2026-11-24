@@ -49,6 +49,8 @@ for entry in "${CASES[@]}"; do
         env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$plugin_command" 1 "$OUT/cache-fresh" \
             | sed 's/"engine":"scrift"/"engine":"scrift-uncached"/' >> "$file"
     done
+    # As the app has it after its first scan: the manifest's result and the modules on disk.
+    env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$plugin_command" 1 "$OUT/cache" > /dev/null
     for _ in $(seq "$PROCESSES"); do
         env ${goal:+"$goal"} "$BENCH" js "$js_dir" "$js_command" "$LAUNCHES" >> "$file"
         env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$plugin_command" "$LAUNCHES" "$OUT/cache" >> "$file"

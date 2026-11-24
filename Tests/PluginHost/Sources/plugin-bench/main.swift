@@ -179,14 +179,15 @@ struct ScriftSubject: Subject {
     let preferences: [String: ExtensionPreferenceValue]
 
     init(
-        directory: URL, command name: String, cache: ScriftModuleCache,
+        directory: URL, command name: String, cache: ScriftModuleCache, manifestCache: URL?,
         preferences overrides: [String: ExtensionPreferenceValue]
     ) throws {
         let description = try PluginSources.read(
             from: repository.appending(path: "Tinycast/Resources/PluginDescription"), requiringMain: false)
         kit = try PluginSources.read(from: repository.appending(path: "Tinycast/Resources/PluginKit"), requiringMain: false)
         let text = try String(contentsOf: directory.appending(path: "Manifest.swift"), encoding: .utf8)
-        manifest = try PluginManifestReader.evaluate(text, description: description).get()
+        // As the catalog reads it: from its cache once it has run, so an unchanged manifest doesn't run.
+        manifest = try PluginManifestReader.read(text, description: description, cache: manifestCache).manifest.get()
         guard let extensionManifest = manifest.extensionManifest(),
             let command = extensionManifest.commands.first(where: { $0.name == name })
         else { throw PluginSessionError.internal("no command \(name)") }
@@ -271,11 +272,10 @@ func bench() async {
             subject = try JavaScriptSubject(
                 directory: directory, command: arguments[3], preferences: environmentPreferences())
         } else {
-            let cache =
-                arguments.count > 5
-                ? ScriftModuleCache(directory: URL(filePath: arguments[5])) : ScriftModuleCache(directory: nil)
+            let cacheDirectory = arguments.count > 5 ? URL(filePath: arguments[5]) : nil
             subject = try ScriftSubject(
-                directory: directory, command: arguments[3], cache: cache, preferences: environmentPreferences())
+                directory: directory, command: arguments[3], cache: ScriftModuleCache(directory: cacheDirectory),
+                manifestCache: cacheDirectory?.appending(path: "Manifests"), preferences: environmentPreferences())
         }
     } catch {
         print("setup failed: \(error)")
