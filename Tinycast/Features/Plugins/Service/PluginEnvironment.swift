@@ -15,7 +15,7 @@ final class PluginEnvironment {
     private var urlSchemes: Set<String> = []
     /// Tinycast's own scheme (`tinycast`, or `tinycast-dev` in Debug), where an OAuth sign-in returns.
     private var appScheme = "tinycast"
-    private var storage: ExtensionStorage?
+    private var storage: (any PluginStorage)?
     private var hostAPI: ExtensionHostAPI?
     private var onInvalidate: () -> Void = {}
     private var toastActions: [String: () throws -> Void] = [:]
@@ -445,7 +445,7 @@ extension PluginApplication {
 
 extension PluginEnvironment {
     static func make(
-        plugin: PluginManifest, command: String, storage: ExtensionStorage, hostAPI: ExtensionHostAPI,
+        plugin: PluginManifest, command: String, storage: any PluginStorage, hostAPI: ExtensionHostAPI,
         appScheme: String, onInvalidate: @escaping () -> Void, onError: @escaping (any Error) -> Void
     ) -> PluginEnvironment {
         let environment = PluginEnvironment()

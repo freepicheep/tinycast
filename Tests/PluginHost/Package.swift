@@ -23,6 +23,15 @@ let package = Package(
                 .product(name: "ScriftFoundation", package: "Scrift")
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]),
+        // The plugin helper, the process the app runs plugin code in, from the app's own sources:
+        // the checks spawn it and drive it over its pipe as the app does.
+        .executableTarget(
+            name: "plugin-helper",
+            dependencies: [
+                .product(name: "Scrift", package: "Scrift"),
+                .product(name: "ScriftFoundation", package: "Scrift")
+            ],
+            swiftSettings: [.swiftLanguageMode(.v6)]),
         .executableTarget(
             name: "tinycast-plugin",
             dependencies: [

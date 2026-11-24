@@ -60,6 +60,7 @@ targets:
           - Features/Clipboard/Service/ClipboardTextHelper.swift
           - Features/Dictation/Helper
           - Features/FileSearch/Helper
+          - Features/Plugins/Helper
           - Resources/EmojiKeywords
           - Resources/PluginKit
           - Resources/PluginDescription
@@ -94,6 +95,14 @@ targets:
           destination: wrapper
           subpath: Contents/Helpers
       - target: ClipboardTextHelper
+        link: false
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
+      # Plugin code runs out of process, so a plugin that crashes, leaks or hangs takes only it.
+      - target: PluginHelper
         link: false
         embed: true
         codeSign: true
@@ -160,6 +169,64 @@ targets:
         # Pinned like ClipboardTextHelper's: release.yml's PRODUCT_NAME would otherwise rename it.
         EXECUTABLE_NAME: FileIndexHelper
         PRODUCT_MODULE_NAME: FileIndexHelper
+        SKIP_INSTALL: YES
+        SWIFT_OPTIMIZATION_LEVEL: -O
+
+  # The process plugin code runs in: PluginHelperClient starts it, and it exits when idle.
+  # Its sources are the plugin runtime's, which Tests/PluginHost/Sources/plugin-helper links too.
+  PluginHelper:
+    type: tool
+    platform: macOS
+    sources:
+      - Tinycast/Features/Extensions/Model/ExtensionBootConfig.swift
+      - Tinycast/Features/Extensions/Model/ExtensionEngine.swift
+      - Tinycast/Features/Extensions/Model/ExtensionHostError.swift
+      - Tinycast/Features/Extensions/Model/ExtensionJSON.swift
+      - Tinycast/Features/Extensions/Model/ExtensionLaunchError.swift
+      - Tinycast/Features/Extensions/Model/ExtensionLaunchType.swift
+      - Tinycast/Features/Extensions/Model/ExtensionManifest.swift
+      - Tinycast/Features/Extensions/Model/ExtensionPickerItem.swift
+      - Tinycast/Features/Extensions/Model/ExtensionRefreshPolicy.swift
+      - Tinycast/Features/Extensions/Model/ExtensionRefreshState.swift
+      - Tinycast/Features/Extensions/Model/ExtensionSearchAccessory.swift
+      - Tinycast/Features/Extensions/Model/RenderNode.swift
+      - Tinycast/Features/Extensions/Service/ExtensionCatalog.swift
+      - Tinycast/Features/Extensions/Service/ExtensionCommandRuntime.swift
+      - Tinycast/Features/Extensions/Service/ExtensionFetcher.swift
+      - Tinycast/Features/Extensions/Service/ExtensionNodeShims.swift
+      - Tinycast/Features/Extensions/Service/ExtensionRuntime.swift
+      - Tinycast/Features/Extensions/Service/ExtensionStorage.swift
+      - Tinycast/Features/Plugins/Helper/PluginHelper.swift
+      - Tinycast/Features/Plugins/Model/InstalledPlugin.swift
+      - Tinycast/Features/Plugins/Model/PluginManifest.swift
+      - Tinycast/Features/Plugins/Model/PluginNode.swift
+      - Tinycast/Features/Plugins/Model/PluginOpenTarget.swift
+      - Tinycast/Features/Plugins/Service/PluginCapabilities.swift
+      - Tinycast/Features/Plugins/Service/PluginCatalog.swift
+      - Tinycast/Features/Plugins/Service/PluginEnvironment.swift
+      - Tinycast/Features/Plugins/Service/PluginHelperWire.swift
+      - Tinycast/Features/Plugins/Service/PluginManifestReader.swift
+      - Tinycast/Features/Plugins/Service/PluginRenderer.swift
+      - Tinycast/Features/Plugins/Service/PluginStorage.swift
+      - Tinycast/Features/Plugins/Service/ScriftPluginRuntime.swift
+      - Tinycast/Platform/AppDisplayName.swift
+      - Tinycast/Platform/AppPaths.swift
+      - Tinycast/Platform/Compression/Zlib.swift
+      - Tinycast/Platform/PipeFraming.swift
+      - Tinycast/Platform/ProcessExit.swift
+      - Tinycast/Platform/ProcessLink.swift
+    dependencies:
+      - package: Scrift
+        product: Scrift
+      - package: Scrift
+        product: ScriftFoundation
+    configFiles:
+      Debug: Config/Tinycast.xcconfig
+    settings:
+      base:
+        # Pinned like the other helpers': release.yml's PRODUCT_NAME would otherwise rename it.
+        EXECUTABLE_NAME: PluginHelper
+        PRODUCT_MODULE_NAME: PluginHelper
         SKIP_INSTALL: YES
         SWIFT_OPTIMIZATION_LEVEL: -O
 

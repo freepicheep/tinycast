@@ -78,7 +78,7 @@ struct ExtensionBootConfig: Sendable {
     }
 }
 
-struct ExtensionLaunchContext: Sendable {
+struct ExtensionLaunchContext: Sendable, Codable {
     var extensionName: String
     var extensionTitle: String
     var commandName: String

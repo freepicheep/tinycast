@@ -7,7 +7,8 @@ SwiftUI's. A plugin command runs in the Extensions host, beside Raycast extensio
 menu bar items, background refresh, preferences, arguments, hotkeys, aliases and toasts.
 
 - [Invariants](#invariants) · [Writing a plugin](#writing-a-plugin) · [The kit](#the-kit) ·
-  [Permissions](#permissions) · [How it runs](#how-it-runs) · [Listing plugins elsewhere](#listing-plugins-elsewhere) ·
+  [Permissions](#permissions) · [How it runs](#how-it-runs) · [The plugin helper](#the-plugin-helper) ·
+  [Listing plugins elsewhere](#listing-plugins-elsewhere) ·
   [Testing](#testing)
 
 ## Invariants
@@ -18,12 +19,18 @@ menu bar items, background refresh, preferences, arguments, hotkeys, aliases and
   someone else's code, so it confirms first and never rides a settings backup.
 - **A plugin is an engine of the Extensions host, not a second palette.** `PluginManager` hands the
   host one `InstalledExtension` per plugin, with `engine: .plugin` and the manifest translated by
-  `PluginManifest.extensionManifest()`, plus a factory that makes a `ScriftPluginRuntime` per launch.
+  `PluginManifest.extensionManifest()`, plus a factory that makes a runtime per launch:
+  `RemotePluginRuntime`, whose session runs in the plugin helper, or `ScriftPluginRuntime` in the app.
   The host drives it through `ExtensionCommandRuntime`, as it drives the JavaScript runtime, so every
   lane (palette, background, menu bar) and every host API works for plugins without plugin code.
 - **Plugins keep their own names.** A plugin's host name is `plugin.<name>`; a Raycast extension's
   name can't contain a dot, so the two never share storage, preferences or entry ids. A plugin's
   folder is never deleted by Tinycast: the launcher and Settings offer no uninstall for it.
+- **Plugin code runs in the plugin helper, not the app.** `Contents/Helpers/PluginHelper` is a process
+  of its own, so a plugin that crashes, leaks or hangs takes only that process, and its memory goes
+  back when the helper exits. Manifests run there too. The app stays the only writer of plugin storage
+  and the only caller of host APIs: the helper asks, the app answers. See
+  [The plugin helper](#the-plugin-helper).
 - **The manifest runs before the plugin's code, and on its own.** `Manifest.swift` is what the launcher
   lists and what decides the plugin's permissions, so it can't be part of the code those permissions
   shape. `PluginManifestReader` runs it in a context of its own, with Foundation's slice and
@@ -187,12 +194,15 @@ Writing to the clipboard (`CopyButton`, `Clipboard.copy`) and pasting need no pe
 
 ## How it runs
 
-`PluginManager` (owned by `AppCore`) scans the folder when plugins are on and watches it for added
-and removed plugins. Each scan hands the Extensions host the plugins as `InstalledExtension`s with
-`engine: .plugin`, so the launcher lists their commands with the host's icon, hotkey, alias and
-argument handling, and the menu bar and background lanes schedule them. Code is read fresh on every
-launch, so editing a `.swift` file needs no reload; a changed `Manifest.swift` needs Settings →
-Plugins → Reload.
+`PluginManager` (owned by `AppCore`) scans the folder when plugins are on and watches it with FSEvents.
+Each scan hands the Extensions host the plugins as `InstalledExtension`s with `engine: .plugin`, so the
+launcher lists their commands with the host's icon, hotkey, alias and argument handling, and the menu
+bar and background lanes schedule them. Code is read fresh on every launch.
+
+Saving any file under a plugin's folder reloads it: the folder is rescanned (an unchanged manifest
+is a cache lookup), and a palette command running from that plugin, failed or not, launches again
+from the new code with the arguments and context it had (`ExtensionManager.relaunch(extension:)`).
+An author sees an edit about a second after saving it, FSEvents' latency.
 
 `PluginCatalog.scan` runs each `Manifest.swift` through `PluginManifestReader`: the description loads
 as `PluginDescription`, the manifest as its own module, and its top-level code runs. `Plugin.init`
@@ -241,11 +251,52 @@ Settings › Plugins opens each plugin to the same card as an extension's: show 
 icon, preferences, and per command its alias, hotkey, visibility, menu bar toggle and background
 refresh. "Configure Plugin" in the launcher opens that card; "Show in Finder" replaces uninstall.
 
-The kit's compiled module is cached per process. The first launch costs about 0.5 s (release), and
-later launches under 10 ms. `PluginManager` warms that cache a moment after plugins are switched on.
+Compiled modules are cached in memory (`moduleCapacity`: 6 in the app, 12 in the helper, besides
+those running) and on disk in `Caches/ScriftModules`, which the app and the helper share. The kit
+compiles once per app update: about 0.5 s (release). A launch that finds it on disk decodes it, and
+one that finds it in memory costs under 10 ms. When plugins are switched on, `PluginManager` asks the
+helper, which the startup scan has just started, to warm the kit (`warm`), so the first launch
+within the helper's lifetime is an in-memory hit.
 
 Errors (compile diagnostics with file and line, a panic, a limit) replace the screen with the message
 and the plugin's recent `print` output.
+
+## The plugin helper
+
+`PluginHelper` is a `tool` target embedded in `Contents/Helpers`, like `FileIndexHelper`. Its sources
+are the plugin runtime's own (`project.yml` lists them; `Tests/PluginHost/Sources/plugin-helper` links
+the same files). `PluginHelperClient` (the app's end, owned by `PluginManager`) starts it with
+`ProcessLink.spawn` on the first scan or launch, passing the compile cache's folder. Frames are
+`PipeFraming` JSON both ways (`PluginHelperWire.swift`), not XPC, as with the app's other helpers.
+
+- **A launch carries everything.** `PluginHelperLaunch` has the manifest's JSON, the plugin's and the
+  kit's folders, the `ExtensionLaunchContext` the host made, and a `PluginStorageSnapshot` of the
+  plugin's storage. The helper keeps nothing between launches but its compile cache.
+- **The helper runs a `ScriftPluginRuntime` per launch,** numbered by the app. Its delegate callbacks
+  (renders, failures, navigation depth, finishing, logs) become events, and `RemotePluginRuntime`
+  hands them to the Extensions host as an in-process runtime would. Requests that wait (`dispatch`,
+  `pop`, `stop`, `drain`, `toastAction`, `scan`) carry a reply number.
+- **Host calls go back to the app.** The runtime's `ExtensionHostAPI` in the helper sends a `hostCall`
+  and awaits the app's `hostAnswer`; the app runs it with its own host API. Clipboard,
+  Accessibility, opening URLs, toasts and sign-in therefore keep the app's permissions and checks.
+- **Storage is mirrored.** Getters must answer synchronously, so the helper's `PluginStorageMirror`
+  answers from the launch's snapshot and sends every write back as a `PluginStorageWrite`, which the
+  app applies to `ExtensionStorage` in order. The app stays the only writer of the files.
+- **Manifests are plugin code too.** `PluginManager`'s scan runs in the helper (`scan`), which runs
+  `PluginCatalog.scan` and sends each manifest's JSON or its `PluginManifestError` back.
+- **A crash ends sessions, not the app.** When the link closes, waiting requests get nothing and each
+  running session fails with "its process ended"; the next scan or launch starts a new helper.
+- **A watchdog catches a stuck main thread.** While a session runs, the app pings every 2 s and kills
+  the helper if a ping goes unanswered for 10 s (generous, since a cold kit compile takes seconds).
+  Scrift's limits stop runaway script code; the watchdog covers whatever they can't reach.
+- **It gives memory back.** The helper exits after 90 s with nothing running, or as soon as nothing
+  runs once its footprint has passed 768 MB. It reports its footprint (`footprint`) after each
+  runtime ends. Switching plugins off sends `exitWhenIdle`.
+- **It runs on the real main thread** (`RunLoop.main.run()`, not `dispatchMain()`), because Scrift
+  checks that main-actor host types are called there.
+
+A build without the helper, or one run with `TINYCAST_PLUGINS_IN_PROCESS=1`, runs plugins in the app
+with `ScriftPluginRuntime`, as before.
 
 ## Listing plugins elsewhere
 
@@ -289,12 +340,17 @@ component shapes, bindings, navigation, storage, forms with stored values, grids
 menu bar commands, preferences, toasts and their actions, `launchCommand`, action commands, compile
 errors, runaway loops, permission gating and `open` rules, using `Tests/PluginHost/Fixtures` and
 `Examples/Plugins`. It then runs `tinycast-plugin dump` on every example. The Hacker News and Google
-Translate checks call the live APIs, and are skipped when they're unreachable. Its sources are
+Translate checks call the live APIs, and are skipped when they're unreachable. The plugin helper's
+checks spawn the real `plugin-helper` binary and drive it through `PluginHelperClient` and
+`RemotePluginRuntime`: renders, handlers, host calls, storage writes and reading them back,
+navigation, a crash and the respawn after it, failed launches, runaway loops, the scan, and idle
+exit. Its sources are
 symlinks to `Features/Plugins` and the Extensions model files the runtime uses. The first run builds
 Scrift and swift-syntax and takes a few minutes.
 
 `./Scripts/bench-plugins.sh` compares the engines: `plugin-bench`, in the same package, runs one
 command under either the Raycast JS runtime or this one, a fresh runtime per launch as the palette
 does, and reports time to first render and to content, CPU, memory during the launch and retained
-after it. The JS versions are installed store extensions (Google Translate's only when
+after it. `plugin-bench helper` runs the Scrift case in the plugin helper as the app does: the app's
+side is then the pipe, and the helper's footprint is reported separately. The JS versions are installed store extensions (Google Translate's only when
 `BENCH_JS_GOOGLE_TRANSLATE` points at a build of it).

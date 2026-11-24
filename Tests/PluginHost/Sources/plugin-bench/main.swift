@@ -7,8 +7,10 @@ import Scrift
 // then stopped and shut down. Scripts/bench-plugins.sh runs each case in its own process,
 // alternating engines, and summarizes.
 //
-//     plugin-bench <js|scrift> <directory> <command> <iterations> [cache directory]
+//     plugin-bench <js|scrift|helper> <directory> <command> <iterations> [cache directory]
 //
+// `helper` runs the Scrift runtime in the plugin helper next to this binary, as the app does: the
+// numbers then include the pipe, and `helper_footprint` is the helper's own memory.
 // Prints one JSON line per launch, then one for the process. A view is done once it shows
 // BENCH_NEEDLE, or BENCH_ITEMS items (default 1); BENCH_PREFS is JSON preferences, BENCH_TIMEOUT
 // seconds bounds a launch, BENCH_SETTLE_MS is the pause after one, BENCH_DUMP prints each final screen.
@@ -177,11 +179,13 @@ struct ScriftSubject: Subject {
     let cache: ScriftModuleCache
     let storage: ExtensionStorage
     let preferences: [String: ExtensionPreferenceValue]
+    let helper: PluginHelperClient?
 
     init(
         directory: URL, command name: String, cache: ScriftModuleCache, manifestCache: URL?,
-        preferences overrides: [String: ExtensionPreferenceValue]
+        preferences overrides: [String: ExtensionPreferenceValue], helper: PluginHelperClient? = nil
     ) throws {
+        self.helper = helper
         let description = try PluginSources.read(
             from: repository.appending(path: "Tinycast/Resources/PluginDescription"), requiringMain: false)
         kit = try PluginSources.read(from: repository.appending(path: "Tinycast/Resources/PluginKit"), requiringMain: false)
@@ -205,6 +209,11 @@ struct ScriftSubject: Subject {
     }
 
     func makeRuntime(host: BenchHost) -> any ExtensionCommandRuntime {
+        if let helper {
+            return RemotePluginRuntime(
+                client: helper, plugin: manifest, directory: directory, storage: storage, hostAPI: host,
+                appScheme: "tinycast", kitDirectory: repository.appending(path: "Tinycast/Resources/PluginKit"))
+        }
         let kit = kit
         return ScriftPluginRuntime(
             plugin: manifest, directory: directory, storage: storage, hostAPI: host, appScheme: "tinycast",
@@ -250,7 +259,7 @@ func emit(_ object: [String: Any]) {
 func bench() async {
     let arguments = CommandLine.arguments
     guard arguments.count >= 5, let iterations = Int(arguments[4]) else {
-        print("usage: plugin-bench <js|scrift> <directory> <command> <iterations> [cache directory]")
+        print("usage: plugin-bench <js|scrift|helper> <directory> <command> <iterations> [cache directory]")
         exit(2)
     }
     let engine = arguments[1]
@@ -267,15 +276,23 @@ func bench() async {
     let setupStarted = ContinuousClock.now
     let setupCPU = cpuSeconds()
     let subject: any Subject
+    var helper: PluginHelperClient?
     do {
         if engine == "js" {
             subject = try JavaScriptSubject(
                 directory: directory, command: arguments[3], preferences: environmentPreferences())
         } else {
             let cacheDirectory = arguments.count > 5 ? URL(filePath: arguments[5]) : nil
+            if engine == "helper" {
+                helper = PluginHelperClient(
+                    executable: Bundle.main.executableURL!.deletingLastPathComponent().appending(path: "plugin-helper"),
+                    cacheDirectory: cacheDirectory
+                        ?? FileManager.default.temporaryDirectory.appending(path: "plugin-bench-cache-\(UUID())"))
+            }
             subject = try ScriftSubject(
                 directory: directory, command: arguments[3], cache: ScriftModuleCache(directory: cacheDirectory),
-                manifestCache: cacheDirectory?.appending(path: "Manifests"), preferences: environmentPreferences())
+                manifestCache: cacheDirectory?.appending(path: "Manifests"), preferences: environmentPreferences(),
+                helper: helper)
         }
     } catch {
         print("setup failed: \(error)")
@@ -375,6 +392,7 @@ func bench() async {
             "renders": recorder.renders,
             "footprint_during": atContent - before,
             "footprint_retained": after - baseline.current,
+            "helper_footprint": helper?.footprint ?? 0,
         ])
     }
     let end = footprint()

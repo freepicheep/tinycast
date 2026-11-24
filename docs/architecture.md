@@ -204,14 +204,16 @@ Tinycast is the main app and the processes it starts, and each of those links to
 | Settings              | this executable again, `--role=settings`                          | while its window is open               |
 | `ClipboardTextHelper` | text recognition and the thumbnail for one clipboard item         | one item                               |
 | `FileIndexHelper`     | the File Search crawl                                             | one crawl                              |
+| `PluginHelper`        | plugin code: manifests and commands, through `ProcessLink`        | until 90 s idle, or a footprint recycle |
 | Tinycast Dictation    | the dictation model adapters, as a helper app with its own bundle | until the idle delay or a model switch |
 
 Three rules decide where new work runs:
 
 - **A role is Tinycast.** A `ProcessRole` runs this executable, so it holds Tinycast's privacy grants,
   Keychain items, preferences and `AppPaths`, and only Tinycast's own code runs in one. Code from anyone
-  else, an extension's above all, never runs as a role, so it never holds Tinycast's identity. How
-  extensions run is not decided yet.
+  else, an extension's above all, never runs as a role, so it never holds Tinycast's identity.
+  Plugins run in `PluginHelper`, a tool that is not a role and asks the main app for every host call
+  ([plugins.md](features/plugins.md#the-plugin-helper)).
 - **The main app is the hub.** Only it runs engines. Another process asks it for work and mirrors what it
   knows, and never talks to a third: Settings sends extension changes to the main app rather than running
   them.

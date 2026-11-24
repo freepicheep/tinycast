@@ -13,7 +13,7 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
     private let plugin: PluginManifest
     private let directory: URL
     private let kitSources: @MainActor () async -> PluginSources?
-    private let storage: ExtensionStorage
+    private let storage: any PluginStorage
     private let hostAPI: ExtensionHostAPI
     private let appScheme: String
     private let moduleCache: ScriftModuleCache
@@ -42,7 +42,7 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
     }
 
     init(
-        plugin: PluginManifest, directory: URL, storage: ExtensionStorage, hostAPI: ExtensionHostAPI,
+        plugin: PluginManifest, directory: URL, storage: any PluginStorage, hostAPI: ExtensionHostAPI,
         appScheme: String, moduleCache: ScriftModuleCache = .shared,
         kitSources: @escaping @MainActor () async -> PluginSources?
     ) {
@@ -68,8 +68,13 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
         session: String, owner: InstalledExtension, command: ExtensionCommand,
         context: ExtensionLaunchContext
     ) async throws {
-        guard let declared = plugin.commands.first(where: { $0.name == command.name }) else {
-            throw ExtensionLaunchError.unknownCommand(command.name)
+        try await launch(session: session, commandName: command.name, context: context)
+    }
+
+    /// The plugin helper's launch, which has the command's name and the context the app made.
+    func launch(session: String, commandName: String, context: ExtensionLaunchContext) async throws {
+        guard let declared = plugin.commands.first(where: { $0.name == commandName }) else {
+            throw ExtensionLaunchError.unknownCommand(commandName)
         }
         let directory = directory
         let read = await Task.detached(priority: .userInitiated) {
@@ -412,6 +417,11 @@ extension PluginCommand.Mode {
 /// registrations that disagree with the manifest.
 struct PluginLaunchError: LocalizedError {
     let message: String
+
+    /// The plugin helper's report of a launch that failed there.
+    init(message: String) {
+        self.message = message
+    }
 
     init(_ error: PluginSessionError, output: String = "") {
         let printed = output.trimmingCharacters(in: .whitespacesAndNewlines)

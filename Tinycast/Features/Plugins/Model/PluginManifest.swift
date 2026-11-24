@@ -96,7 +96,7 @@ struct PluginCommand: Sendable, Hashable, Identifiable {
     var id: String { name }
 }
 
-enum PluginManifestError: Error, Hashable, CustomStringConvertible {
+enum PluginManifestError: Error, Hashable, CustomStringConvertible, Codable {
     case unreadable(String)
     /// Scrift's diagnostics, each with its line in `Manifest.swift`.
     case compile(String)

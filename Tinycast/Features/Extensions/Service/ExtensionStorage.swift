@@ -129,6 +129,11 @@ final class ExtensionStorage {
         store(for: name).formValues[command] ?? [:]
     }
 
+    /// Every command's stored form fields.
+    func formValuesByCommand(extension name: String) -> [String: [String: String]] {
+        store(for: name).formValues
+    }
+
     func setFormValues(extension name: String, command: String, values: [String: String]) {
         mutate(name) { $0.formValues[command, default: [:]].merge(values) { $1 } }
     }

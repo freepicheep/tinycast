@@ -58,6 +58,14 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
     @ObservationIgnored var onDidUninstall: (([String]) -> Void)?
 
     @ObservationIgnored private var sessionID: String?
+    /// What the running palette command was launched with, for `relaunch`.
+    @ObservationIgnored private var runInputs = RunInputs()
+
+    private struct RunInputs {
+        var arguments: [String: String] = [:]
+        var fallbackText: String?
+        var launchContext: [String: RenderValue] = [:]
+    }
     @ObservationIgnored private var backgroundSessionID: String?
     @ObservationIgnored private var backgroundRef: ExtensionCommandRef?
     @ObservationIgnored private var backgroundContinuation: CheckedContinuation<Bool, Never>?
@@ -476,6 +484,7 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             return
         }
         running = ExtensionCommandRef(extensionName: owner.manifest.name, commandName: command.name)
+        runInputs = RunInputs(arguments: arguments, fallbackText: fallbackText, launchContext: launchContext)
         navigationDepth = 1
         state = .launching
 
@@ -544,6 +553,19 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             launchType: launchType,
             isDarkAppearance: NSApp.effectiveAppearance.isDark,
             launchContext: launchContext)
+    }
+
+    /// A plugin's files changed: the palette command running from it, failed or not, starts
+    /// again from the new code with what it was launched with. Nothing else is touched.
+    func relaunch(extension name: String) async {
+        guard let running, running.extensionName == name, state != .idle,
+            let owner = extensionNamed(name),
+            let command = owner.manifest.commands.first(where: { $0.name == running.commandName })
+        else { return }
+        let inputs = runInputs
+        await run(
+            owner, command: command, arguments: inputs.arguments, fallbackText: inputs.fallbackText,
+            launchContext: inputs.launchContext)
     }
 
     func stop() async {

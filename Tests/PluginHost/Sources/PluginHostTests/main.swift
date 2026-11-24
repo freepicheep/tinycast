@@ -66,12 +66,12 @@ final class Recorder: ExtensionRuntimeDelegate {
 /// One launched command.
 @MainActor
 final class Run {
-    let runtime: ScriftPluginRuntime
+    let runtime: any ExtensionCommandRuntime
     let recorder = Recorder()
     let host: TestHost
     let session = "s"
 
-    init(runtime: ScriftPluginRuntime, host: TestHost) {
+    init(runtime: any ExtensionCommandRuntime, host: TestHost) {
         self.runtime = runtime
         self.host = host
         runtime.setDelegate(recorder)
@@ -211,11 +211,18 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
     _ manifest: PluginManifest, _ command: String, fixture: String, storage: ExtensionStorage = freshStorage(),
     host: TestHost = TestHost(), arguments: [String: String] = [:],
     preferences: [String: ExtensionPreferenceValue] = [:], launchType: ExtensionLaunchType = .userInitiated,
-    launchContext: [String: RenderValue] = [:]
+    launchContext: [String: RenderValue] = [:], helper: PluginHelperClient? = nil
 ) async throws -> Run {
-    let runtime = ScriftPluginRuntime(
-        plugin: manifest, directory: folder(fixture), storage: storage, hostAPI: host, appScheme: "tinycast",
-        kitSources: { kit })
+    let runtime: any ExtensionCommandRuntime =
+        if let helper {
+            RemotePluginRuntime(
+                client: helper, plugin: manifest, directory: folder(fixture), storage: storage, hostAPI: host,
+                appScheme: "tinycast", kitDirectory: kitDirectory)
+        } else {
+            ScriftPluginRuntime(
+                plugin: manifest, directory: folder(fixture), storage: storage, hostAPI: host, appScheme: "tinycast",
+                kitSources: { kit })
+        }
     let run = Run(runtime: runtime, host: host)
     guard let extensionManifest = manifest.extensionManifest(),
         let declared = extensionManifest.commands.first(where: { $0.name == command })
@@ -233,12 +240,12 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
     _ manifest: PluginManifest, _ command: String, fixture: String, storage: ExtensionStorage = freshStorage(),
     host: TestHost = TestHost(), arguments: [String: String] = [:],
     preferences: [String: ExtensionPreferenceValue] = [:], launchType: ExtensionLaunchType = .userInitiated,
-    launchContext: [String: RenderValue] = [:]
+    launchContext: [String: RenderValue] = [:], helper: PluginHelperClient? = nil
 ) async -> Run {
     do {
         return try await launch(
             manifest, command, fixture: fixture, storage: storage, host: host, arguments: arguments,
-            preferences: preferences, launchType: launchType, launchContext: launchContext)
+            preferences: preferences, launchType: launchType, launchContext: launchContext, helper: helper)
     } catch {
         print("FAIL  launch \(command): \(error.localizedDescription)")
         exit(1)
@@ -246,9 +253,11 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
 }
 
 /// Why launching fails, or nil when it doesn't.
-@MainActor func launchError(_ manifest: PluginManifest, _ command: String, fixture: String) async -> String? {
+@MainActor func launchError(
+    _ manifest: PluginManifest, _ command: String, fixture: String, helper: PluginHelperClient? = nil
+) async -> String? {
     do {
-        let run = try await launch(manifest, command, fixture: fixture)
+        let run = try await launch(manifest, command, fixture: fixture, helper: helper)
         await run.stop()
         return nil
     } catch {
@@ -626,6 +635,91 @@ func plugin(_ arguments: String = #"name: "a", title: "A","#, commands: String =
     check("a declared one does", PluginOpenTarget.resolve("cleanshot://pin", schemes: ["cleanshot"]) != nil)
     check("no plugin may claim Tinycast's own links", !PluginOpenTarget.isOpenableScheme("tinycast"))
     check("or file URLs", !PluginOpenTarget.isOpenableScheme("FILE"))
+
+    // MARK: The plugin helper, the process the app runs plugin code in
+
+    let helperExecutable = Bundle.main.executableURL!.deletingLastPathComponent().appending(
+        path: "plugin-helper")
+    if FileManager.default.isExecutableFile(atPath: helperExecutable.path) {
+        let helper = PluginHelperClient(
+            executable: helperExecutable,
+            cacheDirectory: FileManager.default.temporaryDirectory.appending(
+                path: "plugin-helper-cache-\(UUID())"))
+        let remoteStorage = freshStorage()
+        let remoteStarted = clock.now
+        let remote = await started(
+            cities, "cities", fixture: "cities", storage: remoteStorage, helper: helper)
+        print("      first launch in the helper \(clock.now - remoteStarted)")
+        check("a command runs in the helper", helper.isRunning && remote.root?.type == "List")
+        await until { remote.root?.bool("isLoading") == false }
+        check("its task's render crosses back", remote.find("List.Section", "Cities")?.children.count == 3)
+        await remote.fire(remote.root, "onSearchTextChange", ["l"])
+        check(
+            "a handler runs there",
+            remote.find("List.Section", "Cities")?.children.map { $0.string("title") } == ["London", "Lima"])
+        let remoteLima = remote.find("List.Section", "Cities")?.children.last
+        await remote.fire(remote.action("Copy to Clipboard", of: remoteLima))
+        await remote.runtime.drainHostCalls()
+        await until { remote.host.saw("window.close") }
+        check("its host calls reach the app", remote.host.saw("clipboard.copy {\"text\":\"Lima\"}"))
+        await remote.fire(remote.action("Pin", of: remoteLima))
+        await until { remoteStorage.localStorageValue(extension: "plugin.fixture", key: "pinned") != nil }
+        check(
+            "its storage writes reach the app's storage",
+            remoteStorage.localStorageValue(extension: "plugin.fixture", key: "pinned") == .string("Lima"))
+        check(
+            "and it reads back what it wrote",
+            remote.find("List.Section", "Pinned")?.children.first?.string("title") == "Lima")
+        await remote.fire(remote.action("Show", of: remote.find("List.Section", "Cities")?.children.last))
+        check("a push crosses", remote.depth == 2)
+        let remotePopped = await remote.runtime.popNavigation(session: remote.session)
+        check("and so does going back", remotePopped && remote.depth == 1)
+        await remote.stop()
+        remote.runtime.shutdown()
+
+        let remoteReopened = await started(
+            cities, "cities", fixture: "cities", storage: remoteStorage, helper: helper)
+        check("the next launch gets the app's storage", remoteReopened.find("List.Section", "Pinned") != nil)
+        let warm = clock.now
+        await remoteReopened.stop()
+        remoteReopened.runtime.shutdown()
+        let again = await started(cities, "cities", fixture: "cities", helper: helper)
+        print("      a launch in the warm helper \(clock.now - warm)")
+        check("a warm helper launches again", again.root?.type == "List")
+
+        // A crash takes the helper, not the app: the session fails, and the next launch starts another.
+        helper.terminate()
+        await until(seconds: 5) { again.recorder.failure != nil }
+        check(
+            "a helper that dies fails its session", again.recorder.failure?.contains("process ended") == true)
+        check("and is gone", !helper.isRunning)
+        let respawned = await started(cities, "cities", fixture: "cities", helper: helper)
+        check("the next launch starts a new helper", helper.isRunning && respawned.root?.type == "List")
+        await respawned.stop()
+        respawned.runtime.shutdown()
+
+        let remoteLost = await launchError(unregistered, "cities", fixture: "cities", helper: helper)
+        check(
+            "a launch that fails there says why", remoteLost?.contains("doesn't register “missing”") == true)
+        let remoteSpin = await started(runaway, "spin", fixture: "runaway", helper: helper)
+        await remoteSpin.fire(remoteSpin.action("Forever", of: remoteSpin.find("List.Item", "Spin")))
+        await until(seconds: 5) { remoteSpin.recorder.failure != nil }
+        check(
+            "an endless loop there is stopped by its limits",
+            remoteSpin.recorder.failure != nil && helper.isRunning)
+        remoteSpin.runtime.shutdown()
+
+        let scanned = await helper.scan(examples, description: descriptionDirectory, cache: nil)
+        let local = PluginCatalog.scan(examples, description: pluginDescription, cache: nil)
+        check("a scan in the helper finds every example", scanned?.map(\.id) == local.map(\.id))
+        check("with the same manifests", scanned == local)
+        check("the helper reports its footprint", helper.footprint > 0)
+        helper.send(.exitWhenIdle)
+        await until(seconds: 5) { !helper.isRunning }
+        check("an idle helper exits when asked", !helper.isRunning)
+    } else {
+        print("      (no plugin-helper next to the checks; build the package to check it)")
+    }
 
     // MARK: The CleanShot X example
 

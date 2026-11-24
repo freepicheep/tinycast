@@ -1,7 +1,9 @@
 #!/bin/bash
 # Time, CPU and memory of the same commands under the Raycast JS runtime and the Scrift plugin
 # runtime, measured by Tests/PluginHost's plugin-bench the way the palette runs a command: a fresh
-# runtime per launch. Engines alternate process by process so network conditions even out.
+# runtime per launch. Engines alternate process by process so network conditions even out. Scrift
+# runs twice: in the bench's process, and in the plugin helper as the app runs it, where the app's
+# side is the pipe and the helper's memory is its own column.
 #
 #   Scripts/bench-plugins.sh [processes] [launches per process]
 #
@@ -21,7 +23,8 @@ BUILD=${BENCH_BUILD:-"${TMPDIR:-/tmp}/tinycast-plugin-host"}
 OUT="${TMPDIR:-/tmp}/tinycast-plugin-bench"
 rm -rf "$OUT" && mkdir -p "$OUT/cache"
 
-(cd Tests/PluginHost && swift build -c release --scratch-path "$BUILD" --product plugin-bench > "$OUT/build.log" 2>&1) \
+(cd Tests/PluginHost && swift build -c release --scratch-path "$BUILD" --product plugin-bench > "$OUT/build.log" 2>&1 \
+    && swift build -c release --scratch-path "$BUILD" --product plugin-helper >> "$OUT/build.log" 2>&1) \
     || { tail -20 "$OUT/build.log"; exit 1; }
 BENCH="$BUILD/release/plugin-bench"
 
@@ -54,6 +57,7 @@ for entry in "${CASES[@]}"; do
     for _ in $(seq "$PROCESSES"); do
         env ${goal:+"$goal"} "$BENCH" js "$js_dir" "$js_command" "$LAUNCHES" >> "$file"
         env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$plugin_command" "$LAUNCHES" "$OUT/cache" >> "$file"
+        env ${goal:+"$goal"} "$BENCH" helper "$EXAMPLES/$plugin" "$plugin_command" "$LAUNCHES" "$OUT/cache" >> "$file"
     done
 done
 
@@ -76,14 +80,19 @@ for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.jsonl"))):
     print(f"{'':28}{'first render':>13}{'done':>9}{'CPU':>9}{'Δ memory':>10}{'retained':>10}")
     for engine, label, cold in [("js", "JS, first in process", True), ("scrift", "Scrift, first in process", True),
                                 ("scrift-uncached", "Scrift, never compiled", True),
-                                ("js", "JS, warm", False), ("scrift", "Scrift, warm", False)]:
+                                ("helper", "Scrift helper, first", True),
+                                ("js", "JS, warm", False), ("scrift", "Scrift, warm", False),
+                                ("helper", "Scrift helper, warm", False)]:
         picked = [r for r in launches if r["ok"] and r["engine"] == engine and (r["iteration"] == 0) == cold]
         if not picked: continue
         first = [r["first_render_s"] for r in picked if r["first_render_s"] >= 0]
         print(f"{label:28}{(ms(median(first)) + ' ms') if first else '        —':>13}"
               f"{ms(median([r['content_s'] for r in picked]))} ms{ms(median([r['cpu_s'] for r in picked]))} ms"
               f"{mb(median([r['footprint_during'] for r in picked]))} MB{mb(median([r['footprint_retained'] for r in picked]))} MB")
-    for engine in ["js", "scrift"]:
+    helped = [r["helper_footprint"] for r in launches if r["ok"] and r["engine"] == "helper" and r.get("helper_footprint")]
+    if helped:
+        print(f"helper: footprint after a launch{mb(median(helped))} MB median,{mb(max(helped))} MB most")
+    for engine in ["js", "scrift", "helper"]:
         summaries = [r for r in rows if r.get("summary") and r["engine"] == engine]
         if not summaries: continue
         print(f"{engine:>6}: setup {ms(median([s['setup_cpu_s'] for s in summaries]))} ms CPU,"

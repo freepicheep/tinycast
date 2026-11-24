@@ -1,7 +1,7 @@
 import Foundation
 
 /// A prop value from the runtime; `node` is an element-valued prop hoisted out of a `__slot`.
-enum RenderValue: Sendable, Hashable {
+enum RenderValue: Sendable, Hashable, Codable {
     case string(String)
     case number(Double)
     case bool(Bool)
@@ -135,7 +135,7 @@ enum RenderValue: Sendable, Hashable {
     }
 }
 
-struct RenderNode: Sendable, Hashable, Identifiable {
+struct RenderNode: Sendable, Hashable, Identifiable, Codable {
     let id: Int
     let type: String
     let props: [String: RenderValue]
@@ -207,7 +207,7 @@ struct RenderNode: Sendable, Hashable, Identifiable {
 }
 
 /// The root the runtime pushes after every commit: one `__screen` per stack entry.
-struct RenderTree: Sendable, Equatable {
+struct RenderTree: Sendable, Equatable, Codable {
     let screens: [RenderNode]
 
     init(screens: [RenderNode]) {
