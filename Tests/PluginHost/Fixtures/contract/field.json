@@ -1,0 +1,157 @@
+[
+  {
+    "autoFocus" : true,
+    "error" : "Required",
+    "id" : "name",
+    "info" : "Who",
+    "kind" : {
+      "kind" : "textField",
+      "prompt" : "Your name",
+      "text" : "Ann"
+    },
+    "title" : "Name"
+  },
+  {
+    "autoFocus" : false,
+    "id" : "secret",
+    "kind" : {
+      "isSecure" : true,
+      "kind" : "textField",
+      "text" : ""
+    },
+    "title" : "Password"
+  },
+  {
+    "autoFocus" : false,
+    "id" : "notes",
+    "kind" : {
+      "kind" : "textEditor",
+      "prompt" : "Notes",
+      "text" : "hi"
+    },
+    "title" : "Notes"
+  },
+  {
+    "autoFocus" : false,
+    "id" : "on",
+    "kind" : {
+      "isOn" : true,
+      "kind" : "toggle",
+      "text" : "Turn on"
+    },
+    "title" : "Enabled"
+  },
+  {
+    "autoFocus" : false,
+    "id" : "feed",
+    "kind" : {
+      "kind" : "picker",
+      "picker" : {
+        "id" : "feed",
+        "options" : [
+          {
+            "icon" : {
+              "color" : {
+                "kind" : "semantic",
+                "name" : "blue"
+              },
+              "kind" : "symbol",
+              "name" : "star"
+            },
+            "title" : "Front Page"
+          },
+          {
+            "section" : "More",
+            "title" : "Newest"
+          }
+        ],
+        "selection" : 1,
+        "title" : "Feed"
+      }
+    }
+  },
+  {
+    "autoFocus" : false,
+    "id" : "tags",
+    "kind" : {
+      "kind" : "multiPicker",
+      "options" : [
+        {
+          "icon" : {
+            "color" : {
+              "kind" : "semantic",
+              "name" : "blue"
+            },
+            "kind" : "symbol",
+            "name" : "star"
+          },
+          "title" : "Front Page"
+        },
+        {
+          "section" : "More",
+          "title" : "Newest"
+        }
+      ],
+      "selection" : [
+        0,
+        1
+      ]
+    },
+    "title" : "Tags"
+  },
+  {
+    "autoFocus" : false,
+    "id" : "when",
+    "kind" : {
+      "includesTime" : true,
+      "kind" : "datePicker",
+      "value" : 1700000000
+    },
+    "title" : "When"
+  },
+  {
+    "autoFocus" : false,
+    "id" : "never",
+    "kind" : {
+      "includesTime" : false,
+      "kind" : "datePicker"
+    },
+    "title" : "Never"
+  },
+  {
+    "autoFocus" : false,
+    "id" : "files",
+    "kind" : {
+      "allowsMultiple" : true,
+      "choosesDirectories" : false,
+      "choosesFiles" : true,
+      "kind" : "filePicker",
+      "path" : [
+        "/tmp"
+      ]
+    },
+    "title" : "Files"
+  },
+  {
+    "autoFocus" : false,
+    "id" : "about",
+    "kind" : {
+      "kind" : "text",
+      "text" : "Some words"
+    }
+  },
+  {
+    "autoFocus" : false,
+    "id" : "line",
+    "kind" : {
+      "kind" : "separator"
+    }
+  },
+  {
+    "autoFocus" : false,
+    "id" : "slider",
+    "kind" : {
+      "kind" : "slider"
+    }
+  }
+]

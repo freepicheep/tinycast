@@ -1,0 +1,62 @@
+[
+  {
+    "icon" : {
+      "color" : {
+        "kind" : "semantic",
+        "name" : "blue"
+      },
+      "kind" : "symbol",
+      "name" : "star"
+    },
+    "kind" : "label",
+    "text" : {
+      "content" : {
+        "kind" : "plain",
+        "text" : "pg"
+      },
+      "isBold" : false,
+      "isMonospaced" : false
+    },
+    "title" : "Author"
+  },
+  {
+    "kind" : "label",
+    "text" : {
+      "content" : {
+        "kind" : "plain",
+        "text" : "12"
+      },
+      "isBold" : false,
+      "isMonospaced" : false
+    },
+    "title" : "Points"
+  },
+  {
+    "kind" : "link",
+    "text" : "example.com",
+    "title" : "Source",
+    "url" : "https://example.com"
+  },
+  {
+    "kind" : "tags",
+    "tags" : [
+      {
+        "color" : {
+          "kind" : "semantic",
+          "name" : "blue"
+        },
+        "text" : "swift"
+      },
+      {
+        "text" : "plain"
+      }
+    ],
+    "title" : "Topics"
+  },
+  {
+    "kind" : "separator"
+  },
+  {
+    "kind" : "chart"
+  }
+]

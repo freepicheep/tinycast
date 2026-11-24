@@ -1,0 +1,482 @@
+[
+  {
+    "kind" : "list",
+    "value" : {
+      "chrome" : {
+        "actions" : [
+          {
+            "children" : [
+
+            ],
+            "effect" : {
+              "application" : "Safari",
+              "kind" : "openURL",
+              "url" : "https://example.com"
+            },
+            "icon" : {
+              "color" : {
+                "kind" : "semantic",
+                "name" : "blue"
+              },
+              "kind" : "symbol",
+              "name" : "star"
+            },
+            "id" : "open",
+            "shortcut" : {
+              "key" : {
+                "kind" : "character",
+                "text" : "o"
+              },
+              "modifiers" : [
+                "command",
+                "shift"
+              ]
+            },
+            "title" : "Open"
+          }
+        ],
+        "isLoading" : true,
+        "pickers" : [
+          {
+            "id" : "feed",
+            "options" : [
+              {
+                "icon" : {
+                  "color" : {
+                    "kind" : "semantic",
+                    "name" : "blue"
+                  },
+                  "kind" : "symbol",
+                  "name" : "star"
+                },
+                "title" : "Front Page"
+              },
+              {
+                "section" : "More",
+                "title" : "Newest"
+              }
+            ],
+            "selection" : 1,
+            "title" : "Feed"
+          }
+        ],
+        "search" : {
+          "binding" : "search",
+          "prompt" : "Search",
+          "text" : "swift"
+        },
+        "title" : "Stories"
+      },
+      "emptyState" : {
+        "actions" : [
+          {
+            "children" : [
+
+            ],
+            "effect" : {
+              "application" : "Safari",
+              "kind" : "openURL",
+              "url" : "https://example.com"
+            },
+            "icon" : {
+              "color" : {
+                "kind" : "semantic",
+                "name" : "blue"
+              },
+              "kind" : "symbol",
+              "name" : "star"
+            },
+            "id" : "open",
+            "shortcut" : {
+              "key" : {
+                "kind" : "character",
+                "text" : "o"
+              },
+              "modifiers" : [
+                "command",
+                "shift"
+              ]
+            },
+            "title" : "Open"
+          }
+        ],
+        "description" : "Try later",
+        "icon" : {
+          "color" : {
+            "kind" : "semantic",
+            "name" : "blue"
+          },
+          "kind" : "symbol",
+          "name" : "star"
+        },
+        "title" : "No Stories"
+      },
+      "sections" : [
+        {
+          "id" : "top",
+          "rows" : [
+            {
+              "accessories" : [
+                {
+                  "kind" : "count",
+                  "value" : 12
+                }
+              ],
+              "actions" : [
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "application" : "Safari",
+                    "kind" : "openURL",
+                    "url" : "https://example.com"
+                  },
+                  "icon" : {
+                    "color" : {
+                      "kind" : "semantic",
+                      "name" : "blue"
+                    },
+                    "kind" : "symbol",
+                    "name" : "star"
+                  },
+                  "id" : "open",
+                  "shortcut" : {
+                    "key" : {
+                      "kind" : "character",
+                      "text" : "o"
+                    },
+                    "modifiers" : [
+                      "command",
+                      "shift"
+                    ]
+                  },
+                  "title" : "Open"
+                }
+              ],
+              "icon" : {
+                "color" : {
+                  "kind" : "semantic",
+                  "name" : "blue"
+                },
+                "kind" : "symbol",
+                "name" : "star"
+              },
+              "id" : "row-1",
+              "isRedacted" : false,
+              "keywords" : [
+                "swift"
+              ],
+              "subtitle" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "example.com"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              },
+              "title" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "A story"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              }
+            }
+          ],
+          "subtitle" : "Today",
+          "title" : "Top"
+        }
+      ],
+      "selection" : "row-1",
+      "selectionBinding" : "selection",
+      "showsDetail" : true
+    }
+  },
+  {
+    "kind" : "grid",
+    "value" : {
+      "aspectRatio" : 1.5,
+      "chrome" : {
+        "actions" : [
+          {
+            "children" : [
+
+            ],
+            "effect" : {
+              "application" : "Safari",
+              "kind" : "openURL",
+              "url" : "https://example.com"
+            },
+            "icon" : {
+              "color" : {
+                "kind" : "semantic",
+                "name" : "blue"
+              },
+              "kind" : "symbol",
+              "name" : "star"
+            },
+            "id" : "open",
+            "shortcut" : {
+              "key" : {
+                "kind" : "character",
+                "text" : "o"
+              },
+              "modifiers" : [
+                "command",
+                "shift"
+              ]
+            },
+            "title" : "Open"
+          }
+        ],
+        "isLoading" : true,
+        "pickers" : [
+          {
+            "id" : "feed",
+            "options" : [
+              {
+                "icon" : {
+                  "color" : {
+                    "kind" : "semantic",
+                    "name" : "blue"
+                  },
+                  "kind" : "symbol",
+                  "name" : "star"
+                },
+                "title" : "Front Page"
+              },
+              {
+                "section" : "More",
+                "title" : "Newest"
+              }
+            ],
+            "selection" : 1,
+            "title" : "Feed"
+          }
+        ],
+        "search" : {
+          "binding" : "search",
+          "prompt" : "Search",
+          "text" : "swift"
+        },
+        "title" : "Stories"
+      },
+      "columns" : 5,
+      "fit" : "fill",
+      "inset" : "medium",
+      "sections" : [
+        {
+          "id" : "s",
+          "rows" : [
+            {
+              "accessories" : [
+                {
+                  "kind" : "count",
+                  "value" : 12
+                }
+              ],
+              "actions" : [
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "application" : "Safari",
+                    "kind" : "openURL",
+                    "url" : "https://example.com"
+                  },
+                  "icon" : {
+                    "color" : {
+                      "kind" : "semantic",
+                      "name" : "blue"
+                    },
+                    "kind" : "symbol",
+                    "name" : "star"
+                  },
+                  "id" : "open",
+                  "shortcut" : {
+                    "key" : {
+                      "kind" : "character",
+                      "text" : "o"
+                    },
+                    "modifiers" : [
+                      "command",
+                      "shift"
+                    ]
+                  },
+                  "title" : "Open"
+                }
+              ],
+              "icon" : {
+                "color" : {
+                  "kind" : "semantic",
+                  "name" : "blue"
+                },
+                "kind" : "symbol",
+                "name" : "star"
+              },
+              "id" : "row-1",
+              "isRedacted" : false,
+              "keywords" : [
+                "swift"
+              ],
+              "subtitle" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "example.com"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              },
+              "title" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "A story"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "kind" : "detail",
+    "value" : {
+      "chrome" : {
+        "actions" : [
+          {
+            "children" : [
+
+            ],
+            "effect" : {
+              "application" : "Safari",
+              "kind" : "openURL",
+              "url" : "https://example.com"
+            },
+            "icon" : {
+              "color" : {
+                "kind" : "semantic",
+                "name" : "blue"
+              },
+              "kind" : "symbol",
+              "name" : "star"
+            },
+            "id" : "open",
+            "shortcut" : {
+              "key" : {
+                "kind" : "character",
+                "text" : "o"
+              },
+              "modifiers" : [
+                "command",
+                "shift"
+              ]
+            },
+            "title" : "Open"
+          }
+        ],
+        "isLoading" : false,
+        "pickers" : [
+
+        ],
+        "title" : "Detail"
+      },
+      "markdown" : "# Title",
+      "metadata" : [
+        {
+          "kind" : "separator"
+        }
+      ]
+    }
+  },
+  {
+    "kind" : "form",
+    "value" : {
+      "chrome" : {
+        "actions" : [
+          {
+            "children" : [
+
+            ],
+            "effect" : {
+              "application" : "Safari",
+              "kind" : "openURL",
+              "url" : "https://example.com"
+            },
+            "icon" : {
+              "color" : {
+                "kind" : "semantic",
+                "name" : "blue"
+              },
+              "kind" : "symbol",
+              "name" : "star"
+            },
+            "id" : "open",
+            "shortcut" : {
+              "key" : {
+                "kind" : "character",
+                "text" : "o"
+              },
+              "modifiers" : [
+                "command",
+                "shift"
+              ]
+            },
+            "title" : "Open"
+          }
+        ],
+        "isLoading" : false,
+        "pickers" : [
+
+        ],
+        "title" : "Form"
+      },
+      "fields" : [
+        {
+          "autoFocus" : true,
+          "id" : "name",
+          "kind" : {
+            "kind" : "textField",
+            "text" : ""
+          },
+          "title" : "Name"
+        }
+      ]
+    }
+  },
+  {
+    "kind" : "menuBar",
+    "value" : {
+      "icon" : {
+        "color" : {
+          "kind" : "semantic",
+          "name" : "blue"
+        },
+        "kind" : "symbol",
+        "name" : "star"
+      },
+      "isLoading" : false,
+      "items" : [
+        {
+          "children" : [
+
+          ],
+          "handler" : 1,
+          "id" : "a",
+          "kind" : "item",
+          "title" : "A"
+        }
+      ],
+      "title" : "HN",
+      "tooltip" : "Hacker News"
+    }
+  },
+  {
+    "kind" : "carousel"
+  }
+]

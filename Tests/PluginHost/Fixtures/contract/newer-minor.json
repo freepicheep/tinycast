@@ -1,0 +1,38 @@
+[
+  {
+    "version": { "major": 1, "minor": 7 },
+    "generation": 1,
+    "depth": 1,
+    "transition": "slide",
+    "screen": {
+      "kind": "list",
+      "value": {
+        "chrome": { "title": "Newer", "pickers": [], "actions": [], "isLoading": false, "badge": 3 },
+        "sections": [
+          {
+            "id": "s",
+            "rows": [
+              {
+                "id": "r",
+                "title": { "content": { "kind": "plain", "text": "Kept" }, "isBold": false, "isMonospaced": false, "underline": true },
+                "icon": { "kind": "hologram", "depth": 3 },
+                "accessories": [{ "kind": "count", "value": 2 }, { "kind": "meter", "value": 0.5 }],
+                "keywords": [],
+                "actions": [{ "id": "a", "title": "Share", "effect": { "kind": "share", "item": "x" }, "children": [] }],
+                "isRedacted": false,
+                "swipeActions": []
+              }
+            ]
+          }
+        ],
+        "showsDetail": false
+      }
+    }
+  },
+  {
+    "version": { "major": 1, "minor": 7 },
+    "generation": 2,
+    "depth": 1,
+    "screen": { "kind": "carousel", "value": { "pages": [] } }
+  }
+]

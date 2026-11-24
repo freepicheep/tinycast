@@ -1,0 +1,74 @@
+[
+  {
+    "kind" : "text",
+    "text" : {
+      "content" : {
+        "kind" : "plain",
+        "text" : "3h"
+      },
+      "isBold" : false,
+      "isMonospaced" : false
+    }
+  },
+  {
+    "kind" : "count",
+    "value" : 42
+  },
+  {
+    "icon" : {
+      "color" : {
+        "kind" : "semantic",
+        "name" : "blue"
+      },
+      "kind" : "symbol",
+      "name" : "star"
+    },
+    "kind" : "label",
+    "text" : {
+      "content" : {
+        "kind" : "plain",
+        "text" : "12"
+      },
+      "isBold" : false,
+      "isMonospaced" : false
+    }
+  },
+  {
+    "icon" : {
+      "color" : {
+        "kind" : "semantic",
+        "name" : "blue"
+      },
+      "kind" : "symbol",
+      "name" : "star"
+    },
+    "kind" : "icon",
+    "tooltip" : "Starred"
+  },
+  {
+    "icon" : {
+      "color" : {
+        "kind" : "semantic",
+        "name" : "blue"
+      },
+      "kind" : "symbol",
+      "name" : "star"
+    },
+    "kind" : "icon"
+  },
+  {
+    "color" : {
+      "kind" : "semantic",
+      "name" : "green"
+    },
+    "kind" : "tag",
+    "name" : "new"
+  },
+  {
+    "kind" : "tag",
+    "name" : "plain"
+  },
+  {
+    "kind" : "meter"
+  }
+]

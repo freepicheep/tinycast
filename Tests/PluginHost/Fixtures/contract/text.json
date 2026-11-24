@@ -1,0 +1,66 @@
+[
+  {
+    "content" : {
+      "kind" : "plain",
+      "text" : "plain"
+    },
+    "isBold" : false,
+    "isMonospaced" : false
+  },
+  {
+    "color" : {
+      "kind" : "semantic",
+      "name" : "secondary"
+    },
+    "content" : {
+      "kind" : "date",
+      "style" : "relative",
+      "value" : 1700000000
+    },
+    "isBold" : true,
+    "isMonospaced" : true
+  },
+  {
+    "content" : {
+      "kind" : "date",
+      "style" : "offset",
+      "value" : 0
+    },
+    "isBold" : false,
+    "isMonospaced" : false
+  },
+  {
+    "content" : {
+      "kind" : "date",
+      "style" : "timer",
+      "value" : 0
+    },
+    "isBold" : false,
+    "isMonospaced" : false
+  },
+  {
+    "content" : {
+      "kind" : "date",
+      "style" : "date",
+      "value" : 0
+    },
+    "isBold" : false,
+    "isMonospaced" : false
+  },
+  {
+    "content" : {
+      "kind" : "date",
+      "style" : "time",
+      "value" : 0
+    },
+    "isBold" : false,
+    "isMonospaced" : false
+  },
+  {
+    "content" : {
+      "kind" : "markdown"
+    },
+    "isBold" : false,
+    "isMonospaced" : false
+  }
+]

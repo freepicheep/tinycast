@@ -1,0 +1,37 @@
+[
+  {
+    "kind" : "text",
+    "value" : "a"
+  },
+  {
+    "kind" : "bool",
+    "value" : true
+  },
+  {
+    "kind" : "index",
+    "value" : 2
+  },
+  {
+    "kind" : "index"
+  },
+  {
+    "kind" : "indices",
+    "value" : [
+      0,
+      3
+    ]
+  },
+  {
+    "kind" : "date",
+    "value" : 12.5
+  },
+  {
+    "kind" : "date"
+  },
+  {
+    "kind" : "paths",
+    "value" : [
+      "/tmp"
+    ]
+  }
+]

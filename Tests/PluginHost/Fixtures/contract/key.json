@@ -1,0 +1,39 @@
+[
+  {
+    "kind" : "character",
+    "text" : "k"
+  },
+  {
+    "kind" : "return"
+  },
+  {
+    "kind" : "delete"
+  },
+  {
+    "kind" : "deleteForward"
+  },
+  {
+    "kind" : "tab"
+  },
+  {
+    "kind" : "space"
+  },
+  {
+    "kind" : "escape"
+  },
+  {
+    "kind" : "upArrow"
+  },
+  {
+    "kind" : "downArrow"
+  },
+  {
+    "kind" : "leftArrow"
+  },
+  {
+    "kind" : "rightArrow"
+  },
+  {
+    "kind" : "f13"
+  }
+]

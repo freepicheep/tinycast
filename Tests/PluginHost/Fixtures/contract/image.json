@@ -1,0 +1,50 @@
+[
+  {
+    "kind" : "symbol",
+    "name" : "star"
+  },
+  {
+    "color" : {
+      "kind" : "semantic",
+      "name" : "blue"
+    },
+    "kind" : "symbol",
+    "name" : "star"
+  },
+  {
+    "kind" : "remote",
+    "mask" : "circle",
+    "url" : "https://example.com/a.png"
+  },
+  {
+    "kind" : "remote",
+    "mask" : "roundedRectangle",
+    "url" : "https://example.com/b.png"
+  },
+  {
+    "kind" : "file",
+    "path" : "/tmp/a.png"
+  },
+  {
+    "kind" : "fileIcon",
+    "path" : "/Applications/Safari.app"
+  },
+  {
+    "kind" : "asset",
+    "name" : "icon.png"
+  },
+  {
+    "kind" : "emoji",
+    "text" : "👋"
+  },
+  {
+    "color" : {
+      "kind" : "semantic",
+      "name" : "blue"
+    },
+    "kind" : "color"
+  },
+  {
+    "kind" : "video"
+  }
+]

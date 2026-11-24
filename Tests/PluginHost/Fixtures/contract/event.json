@@ -1,0 +1,24 @@
+[
+  {
+    "generation" : 9,
+    "kind" : "perform",
+    "value" : 3
+  },
+  {
+    "generation" : 9,
+    "kind" : "set",
+    "node" : "feed",
+    "value" : {
+      "kind" : "index",
+      "value" : 1
+    }
+  },
+  {
+    "generation" : 10,
+    "kind" : "search",
+    "text" : "swift"
+  },
+  {
+    "kind" : "back"
+  }
+]

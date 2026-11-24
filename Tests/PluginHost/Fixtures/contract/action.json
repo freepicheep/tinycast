@@ -1,0 +1,220 @@
+[
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "application" : "Safari",
+      "kind" : "openURL",
+      "url" : "https://example.com"
+    },
+    "icon" : {
+      "color" : {
+        "kind" : "semantic",
+        "name" : "blue"
+      },
+      "kind" : "symbol",
+      "name" : "star"
+    },
+    "id" : "open",
+    "shortcut" : {
+      "key" : {
+        "kind" : "character",
+        "text" : "o"
+      },
+      "modifiers" : [
+        "command",
+        "shift"
+      ]
+    },
+    "title" : "Open"
+  },
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "concealed" : true,
+      "kind" : "copy",
+      "text" : "text"
+    },
+    "id" : "copy",
+    "title" : "Copy"
+  },
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "kind" : "paste",
+      "text" : "text"
+    },
+    "id" : "paste",
+    "title" : "Paste"
+  },
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "kind" : "revealInFinder",
+      "path" : "/tmp"
+    },
+    "id" : "reveal",
+    "title" : "Show in Finder"
+  },
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "kind" : "openWith",
+      "path" : "/tmp/a.txt"
+    },
+    "id" : "with",
+    "title" : "Open With"
+  },
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "kind" : "trash",
+      "path" : [
+        "/tmp/a",
+        "/tmp/b"
+      ]
+    },
+    "handler" : 7,
+    "id" : "trash",
+    "role" : "destructive",
+    "title" : "Move to Trash"
+  },
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "kind" : "push"
+    },
+    "handler" : 3,
+    "id" : "push",
+    "title" : "Details"
+  },
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "kind" : "submit"
+    },
+    "handler" : 4,
+    "id" : "submit",
+    "title" : "Submit"
+  },
+  {
+    "children" : [
+
+    ],
+    "handler" : 5,
+    "id" : "run",
+    "role" : "cancel",
+    "title" : "Run"
+  },
+  {
+    "children" : [
+      {
+        "children" : [
+
+        ],
+        "effect" : {
+          "application" : "Safari",
+          "kind" : "openURL",
+          "url" : "https://example.com"
+        },
+        "icon" : {
+          "color" : {
+            "kind" : "semantic",
+            "name" : "blue"
+          },
+          "kind" : "symbol",
+          "name" : "star"
+        },
+        "id" : "open",
+        "shortcut" : {
+          "key" : {
+            "kind" : "character",
+            "text" : "o"
+          },
+          "modifiers" : [
+            "command",
+            "shift"
+          ]
+        },
+        "title" : "Open"
+      }
+    ],
+    "effect" : {
+      "kind" : "section"
+    },
+    "id" : "section",
+    "title" : "Links"
+  },
+  {
+    "children" : [
+      {
+        "children" : [
+
+        ],
+        "effect" : {
+          "application" : "Safari",
+          "kind" : "openURL",
+          "url" : "https://example.com"
+        },
+        "icon" : {
+          "color" : {
+            "kind" : "semantic",
+            "name" : "blue"
+          },
+          "kind" : "symbol",
+          "name" : "star"
+        },
+        "id" : "open",
+        "shortcut" : {
+          "key" : {
+            "kind" : "character",
+            "text" : "o"
+          },
+          "modifiers" : [
+            "command",
+            "shift"
+          ]
+        },
+        "title" : "Open"
+      }
+    ],
+    "effect" : {
+      "kind" : "menu"
+    },
+    "icon" : {
+      "color" : {
+        "kind" : "semantic",
+        "name" : "blue"
+      },
+      "kind" : "symbol",
+      "name" : "star"
+    },
+    "id" : "menu",
+    "title" : "More"
+  },
+  {
+    "children" : [
+
+    ],
+    "effect" : {
+      "kind" : "share"
+    },
+    "id" : "new",
+    "title" : "New"
+  }
+]

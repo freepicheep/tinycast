@@ -1,0 +1,13 @@
+[
+  {
+    "key" : {
+      "kind" : "return"
+    },
+    "modifiers" : [
+      "command",
+      "shift",
+      "option",
+      "control"
+    ]
+  }
+]

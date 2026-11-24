@@ -1,0 +1,66 @@
+[
+  {
+    "alternate" : {
+      "handler" : 2,
+      "title" : "Comments"
+    },
+    "children" : [
+
+    ],
+    "handler" : 1,
+    "icon" : {
+      "color" : {
+        "kind" : "semantic",
+        "name" : "blue"
+      },
+      "kind" : "symbol",
+      "name" : "star"
+    },
+    "id" : "top",
+    "kind" : "item",
+    "shortcut" : {
+      "key" : {
+        "kind" : "character",
+        "text" : "1"
+      },
+      "modifiers" : [
+        "command"
+      ]
+    },
+    "subtitle" : "12 points",
+    "title" : "Top story",
+    "tooltip" : "Open"
+  },
+  {
+    "children" : [
+
+    ],
+    "id" : "section",
+    "kind" : "section",
+    "title" : "Stories"
+  },
+  {
+    "children" : [
+
+    ],
+    "id" : "more",
+    "kind" : "submenu",
+    "title" : "More"
+  },
+  {
+    "children" : [
+
+    ],
+    "id" : "line",
+    "kind" : "separator",
+    "title" : ""
+  },
+  {
+    "children" : [
+
+    ],
+    "id" : "slider",
+    "kind" : "slider",
+    "title" : ""
+  }
+]

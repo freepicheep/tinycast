@@ -15,6 +15,11 @@ let package = Package(
                 .product(name: "ScriftFoundation", package: "Scrift")
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]),
+        // The view contract's JSON against its golden files (Fixtures/contract).
+        .executableTarget(
+            name: "PluginContractTests",
+            dependencies: [.product(name: "Scrift", package: "Scrift")],
+            swiftSettings: [.swiftLanguageMode(.v6)]),
         // Scripts/bench-plugins.sh: one command under either engine, for time, CPU and memory.
         .executableTarget(
             name: "plugin-bench",

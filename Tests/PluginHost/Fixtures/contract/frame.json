@@ -1,0 +1,60 @@
+[
+  {
+    "depth" : 2,
+    "generation" : 4,
+    "screen" : {
+      "kind" : "detail",
+      "value" : {
+        "chrome" : {
+          "actions" : [
+            {
+              "children" : [
+
+              ],
+              "effect" : {
+                "application" : "Safari",
+                "kind" : "openURL",
+                "url" : "https://example.com"
+              },
+              "icon" : {
+                "color" : {
+                  "kind" : "semantic",
+                  "name" : "blue"
+                },
+                "kind" : "symbol",
+                "name" : "star"
+              },
+              "id" : "open",
+              "shortcut" : {
+                "key" : {
+                  "kind" : "character",
+                  "text" : "o"
+                },
+                "modifiers" : [
+                  "command",
+                  "shift"
+                ]
+              },
+              "title" : "Open"
+            }
+          ],
+          "isLoading" : false,
+          "pickers" : [
+
+          ],
+          "title" : "Detail"
+        },
+        "markdown" : "# Title",
+        "metadata" : [
+          {
+            "kind" : "separator"
+          }
+        ]
+      }
+    },
+    "version" : {
+      "major" : 1,
+      "minor" : 0
+    }
+  }
+]
