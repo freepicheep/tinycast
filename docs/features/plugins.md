@@ -296,7 +296,10 @@ a list's selection, a picker, a field) is named by its node's id, and the host w
   version fails the command; a newer minor version's unknown cases decode as `unsupported` and draw
   as a placeholder, so an old Tinycast reads a new kit's frames.
 - **A frame is whole.** The kit sends the full screen each time, never a diff. The largest example,
-  65 KB for a Hacker News page of stories, encodes in about 2.5 ms.
+  65 KB for a Hacker News page of stories, encodes in about 2.5 ms. From its arrival in `PluginHost`
+  to its first draw, a frame takes a median 7.6 ms (90th percentile 14 ms; 58 frames of the three
+  examples in a Debug build); a 30- or 40-row list takes 23-37 ms, the most when it replaces the
+  loading screen.
 - **The host's views know only the contract.** `PluginCommandView`, `PluginFormView` and
   `PluginMenuBarItem` draw a frame; `PluginScreenLayout` walks it for the palette (the rows in order,
   filtering when the plugin has no search binding, the actions of a row). The golden files in
