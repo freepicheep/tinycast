@@ -271,8 +271,8 @@ the catalog (Xcode's own build does the same in the IDE). The six privacy prompt
 - **A count is one interpolated string** (`"\(count) items"`) with plural variations in the catalog, never
   a `== 1 ?` branch.
 - **Not language, not in the catalog**: glyphs, separators and samples are `Text(verbatim:)`.
-- **Never localized**: anything from macOS, the user or an extension (app and pane names, user
-  content, everything a Raycast extension supplies or receives) and persisted formats, identifiers,
+- **Never localized**: anything from macOS, the user or a plugin (app and pane names, user
+  content, everything a plugin supplies or receives) and persisted formats, identifiers,
   log text, prompts sent to a model, and what the calculator parses.
 - **Tinycast's own command names are translated and stay findable in English**: `CommandID`,
   `SystemAction` and `WindowCommand` keep their English source as `englishName`, which the launcher

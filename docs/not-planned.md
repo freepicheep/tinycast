@@ -166,14 +166,12 @@ Tinycast is an all-in-one launcher, not a full window manager. Its window tools 
 
 ## Raycast extensions
 
-- **Full Raycast compatibility.** Tinycast runs about 80% of what Raycast extensions use, and **that
-  work has stopped.** Some extensions won't work, or will look a bit different. Tinycast's own
-  shortcuts (like Tab) win over an extension's. Our future is native Tinycast extensions.
+- **Running Raycast extensions.** Tinycast no longer runs them: they ran about 80% of what Raycast
+  offers, and every gap looked like a Tinycast bug. Plugins, written in Swift, replace them; the
+  Raycast import still brings over snippets, quicklinks, script commands and clipboard history.
   ([#1592](https://github.com/abue-ammar/tinycast/issues/1592), [#1585](https://github.com/abue-ammar/tinycast/issues/1585), [#1557](https://github.com/abue-ammar/tinycast/issues/1557), [#1561](https://github.com/abue-ammar/tinycast/issues/1561), [#1541](https://github.com/abue-ammar/tinycast/issues/1541), [#1520](https://github.com/abue-ammar/tinycast/issues/1520), [#1495](https://github.com/abue-ammar/tinycast/issues/1495), [#1452](https://github.com/abue-ammar/tinycast/issues/1452), [#1341](https://github.com/abue-ammar/tinycast/issues/1341), [#1129](https://github.com/abue-ammar/tinycast/issues/1129), [#976](https://github.com/abue-ammar/tinycast/issues/976), [#672](https://github.com/abue-ammar/tinycast/issues/672), [#664](https://github.com/abue-ammar/tinycast/issues/664), [#660](https://github.com/abue-ammar/tinycast/issues/660),
   [#1121](https://github.com/abue-ammar/tinycast/issues/1121), [#1200](https://github.com/abue-ammar/tinycast/issues/1200), [#1397](https://github.com/abue-ammar/tinycast/issues/1397))
-- **Let extensions use Tinycast's AI.** ([#1462](https://github.com/abue-ammar/tinycast/issues/1462))
-- **⚠️ Locking extensions down.** An extension can do anything you can do on your Mac. **Install only
-  extensions you trust.** ([#946](https://github.com/abue-ammar/tinycast/issues/946))
+- **Let plugins use Tinycast's AI.** ([#1462](https://github.com/abue-ammar/tinycast/issues/1462))
 
 ## Settings and looks
 

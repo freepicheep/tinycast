@@ -139,8 +139,8 @@ store starts the helper on demand and reaps it after the selected idle delay or 
 `TinycastLaunch` (`@main`) pins the interface language, then runs `TinycastApp`, which declares
 only two `MenuBarExtra` scenes: Tinycast's own item and the
 calendar's, each inserted by one preference and independent of the other; everything else visible is
-driven imperatively from AppKit. Extension menu extras are dynamic `NSStatusItem`s owned entirely by
-`Features/Extensions/`, through `ExtensionManager`, with no scene or lifecycle wiring in the core.
+driven imperatively from AppKit. A plugin's menu bar items are dynamic `NSStatusItem`s owned entirely
+by `Features/Plugins/`, through `PluginHost`, with no scene or lifecycle wiring in the core.
 
 - **Command palette**: a borderless floating `NSPanel` (`Palette/PalettePanel.swift`) hosting SwiftUI
   via `NSHostingView`, managed by `PaletteWindowController`. It toggles between a compact bar and the
@@ -211,11 +211,11 @@ Three rules decide where new work runs:
 
 - **A role is Tinycast.** A `ProcessRole` runs this executable, so it holds Tinycast's privacy grants,
   Keychain items, preferences and `AppPaths`, and only Tinycast's own code runs in one. Code from anyone
-  else, an extension's above all, never runs as a role, so it never holds Tinycast's identity.
+  else, a plugin's above all, never runs as a role, so it never holds Tinycast's identity.
   Plugins run in `PluginHelper`, a tool that is not a role and asks the main app for every host call
   ([plugins.md](features/plugins.md#the-plugin-helper)).
 - **The main app is the hub.** Only it runs engines. Another process asks it for work and mirrors what it
-  knows, and never talks to a third: Settings sends extension changes to the main app rather than running
+  knows, and never talks to a third: Settings sends plugin changes to the main app rather than running
   them.
 - **A process lives as long as its work.** On macOS 27 a long-lived process keeps the pages its freed
   memory used, so work with a large passing peak gets a process that exits when the work ends. A headless
@@ -226,8 +226,8 @@ Three rules decide where new work runs:
 `App/ProcessLink+Role.swift` starts this one as a role. A role speaks this build's `Codable` types, so
 both ends must be one build: `Platform/LaunchedExecutable.swift` pins the executable's file identity at
 launch, and a role never starts once an update or a rebuild has replaced it; Settings then offers a
-relaunch. Code built apart from Tinycast, such as an extension, declares the Tinycast API version it
-supports instead.
+relaunch. Code built apart from Tinycast, such as a plugin, meets it through a versioned contract
+instead ([plugins.md](features/plugins.md#the-view-contract)).
 
 ## The Settings process
 
@@ -269,15 +269,15 @@ and nothing is copied.
   is adopted.
 - **Work only the main app can do** goes as a `SettingsAction`: the palette editors, rooms, running a
   layout, iCloud Sync, the file index, dictation models, the settings file, updates and Support. MCP
-  edits, authentication, backup operations and extension changes use the same request and reply
+  edits, authentication and backup operations use the same request and reply
   lifecycle. Losing the connection finishes all pending requests. What only the main app
   knows comes back as `MainAppStatus`, rebuilt under observation and sent when it changes. Panes reach
   both through `MainAppLink` in the environment.
 - **Shortcut recording** pauses the main app's engines through `HotKeyManager.isRecordingInSettings`; the
   child's own `HotKeyManager` is loaded but never activated, so it registers nothing.
-- **Extensions** never run in Settings. `ExtensionLibrary` reads the catalog from disk and mirrors the
-  rest. The main app answers extension library requests. Native extension execution can have its own
-  process and permission model without changing how Settings talks to the main app.
+- **Plugins** never run in Settings. Settings reads their manifests and mirrors the rest
+  (`MainAppStatus.plugins`: preferences, command settings, who is signed in); each edit goes back as a
+  `SettingsAction`, and the main app, which owns `PluginStore`, applies it.
 
 ## Observation
 
@@ -333,7 +333,7 @@ Tinycast/
                     NotificationToken, AppPaths, Signposts, HealthTicker, Memo, ActivationPolicy,
                     PipeFraming, ProcessLink, ProcessDisplayName, LaunchedExecutable,
                     Images/, Compression/
-  Resources/        RaycastRuntime.generated.js, the embedded extension runtime
+  Resources/        PluginKit/ and PluginDescription/, the Scrift source plugins compile against
   Palette/          the palette shell: PalettePanel, PaletteWindowController, RootPaletteView,
                     the PaletteScreen protocol, PaletteCoordinator, PaletteState, PaletteMode
   Windows/          the non-palette AppKit surfaces: AppWindowController, Dialog/, HUD/, About/
@@ -344,7 +344,7 @@ Tinycast/
     Launcher/ Clipboard/ Calculator/ Calendar/ Emoji/ FileSearch/ MenuSearch/ Notes/
     Quicklinks/ Snippets/ Uninstall/ SystemActions/ CustomCommands/ HotKeys/ Backup/
     WindowManagement/ Onboarding/ Updates/ Support/ AI/ Settings/
-    Extensions/
+    Plugins/
         Model/      pure: the harness inputs
         Service/    effects: stores, monitors, runners, AppKit glue
         UI/         screens, views, and the feature's coordinator

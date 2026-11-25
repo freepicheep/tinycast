@@ -2,30 +2,35 @@
 
 Plugins are commands written in Swift. Tinycast runs them with [Scrift](https://github.com/freepicheep/Scrift),
 an embedded interpreter for a type-checked subset of Swift. Nothing needs installing or building: a plugin
-is a folder of `.swift` files that Tinycast compiles when a command launches. Its views are shaped like
-SwiftUI's. A plugin command runs in the Extensions host, beside Raycast extensions: the same screens,
-menu bar items, background refresh, preferences, arguments, hotkeys, aliases and toasts.
+is a folder of `.swift` files that Tinycast compiles when a command launches. Its views are written
+like SwiftUI's, and Tinycast draws what they describe with its own: lists, grids, details, forms and
+menu bar items, plus background runs, preferences, arguments, hotkeys, aliases and toasts.
 
 - [Invariants](#invariants) · [Writing a plugin](#writing-a-plugin) · [The kit](#the-kit) ·
-  [Permissions](#permissions) · [How it runs](#how-it-runs) · [The plugin helper](#the-plugin-helper) ·
+  [Permissions](#permissions) · [How it runs](#how-it-runs) · [The view contract](#the-view-contract) ·
+  [The plugin helper](#the-plugin-helper) ·
   [Listing plugins elsewhere](#listing-plugins-elsewhere) ·
   [Testing](#testing)
 
 ## Invariants
 
 - **Off means off.** `pluginsEnabled` is opt-in. `PluginManager.setEnabled(false)` stops watching the
-  folder, empties the installed set and takes every plugin out of the Extensions host
-  (`ExtensionManager.setPlugins([])`), which ends its running commands. Enabling is also consent to run
-  someone else's code, so it confirms first and never rides a settings backup.
-- **A plugin is an engine of the Extensions host, not a second palette.** `PluginManager` hands the
-  host one `InstalledExtension` per plugin, with `engine: .plugin` and the manifest translated by
-  `PluginManifest.extensionManifest()`, plus a factory that makes a runtime per launch:
-  `RemotePluginRuntime`, whose session runs in the plugin helper, or `ScriftPluginRuntime` in the app.
-  The host drives it through `ExtensionCommandRuntime`, as it drives the JavaScript runtime, so every
-  lane (palette, background, menu bar) and every host API works for plugins without plugin code.
-- **Plugins keep their own names.** A plugin's host name is `plugin.<name>`; a Raycast extension's
-  name can't contain a dot, so the two never share storage, preferences or entry ids. A plugin's
-  folder is never deleted by Tinycast: the launcher and Settings offer no uninstall for it.
+  folder, empties the installed set and calls `PluginHost.stopAll()`, which ends every running command,
+  menu bar item and background run. Enabling is also consent to run someone else's code, so it confirms
+  first and never rides a settings backup.
+- **A plugin describes, Tinycast draws.** A script never touches a view. The kit turns a screen into a
+  `PluginFrame` (`Model/PluginUI.swift`), plain values in a versioned contract, and the views in
+  `Features/Plugins/UI` draw it. They share no code with any other renderer, and the contract carries
+  no other product's names. See [The view contract](#the-view-contract).
+- **`PluginHost` is the one owner of running plugins.** It holds the palette's session, each action
+  run, each menu bar item and the background schedule, makes a runtime per launch through
+  `PluginManager.makeRuntime` (`RemotePluginRuntime` in the helper, or `ScriftPluginRuntime` in the
+  app) and answers each one's host calls through a `PluginHostBridge` that knows the lane it serves.
+- **Plugins are named by their manifests.** A command's entry ID is `plugin:<name>/<command>`
+  (`PluginCommandRef`), which hotkeys, aliases, favorites, visibility and ranking key by. A plugin's
+  folder is never deleted by Tinycast: the launcher and Settings offer no uninstall for it. A command
+  loses its references only when its folder goes or its manifest drops it; a manifest that stops
+  compiling costs nothing.
 - **Plugin code runs in the plugin helper, not the app.** `Contents/Helpers/PluginHelper` is a process
   of its own, so a plugin that crashes, leaks or hangs takes only that process, and its memory goes
   back when the helper exits. Manifests run there too. The app stays the only writer of plugin storage
@@ -40,8 +45,8 @@ menu bar items, background refresh, preferences, arguments, hotkeys, aliases and
   and that nothing else is registered, and fails the launch with every mismatch listed.
 - **A launch is the plugin's whole world.** Each launch gets its own `ScriftContext`: the kit, the
   plugin's module and the host APIs its manifest grants. Plugins share no globals and no state with
-  each other or with an earlier launch; what outlives a launch is the host's `ExtensionStorage` under
-  the plugin's host name.
+  each other or with an earlier launch; what outlives a launch is the plugin's `PluginStore` data,
+  under its name.
 - **Every entry into script code runs under `ScriftPluginRuntime.limits`** (`ScriftLimits.untrusted`: 1 s,
   100M instructions, 64 MB, depth 1000), and every call into it is the runtime's: a render, a handler,
   a toast's action, a task's step. A runaway loop fails the command, not the app.
@@ -50,12 +55,11 @@ menu bar items, background refresh, preferences, arguments, hotkeys, aliases and
   `import Selection`. A plugin that uses an API it didn't ask for fails to compile, with an ordinary
   "cannot find" error.
 - **`open` reaches web addresses, `mailto:`, file paths and the app link schemes `.openURLs` names.**
-  `PluginOpenTarget` decides in `PluginEnvironment`, before anything reaches the host. No manifest may
-  name `file` or Tinycast's or Raycast's own schemes.
-- **`Model/PluginNode.swift` is the boundary.** The kit renders a screen into `PluginNode` trees whose
-  types and props are Raycast's components (`List.Item`, `Form.TextField`, `MenuBarExtra.Item`, …),
-  with script closures as handler props. `PluginRenderer` turns them into the host's `RenderTree`,
-  giving nodes ids that are stable from one render to the next and handlers ids the host sends back.
+  `PluginOpenTarget` decides in `PluginEnvironment`, and the host decides again before it opens
+  anything. No manifest may name `file` or Tinycast's own schemes.
+- **Host calls are typed.** Everything a plugin asks of the app is a `PluginHostCall` and its
+  `PluginHostAnswer` (`Model/PluginHostCall.swift`), Codable both ways, so the pipe to the helper and
+  the in-process runtime carry the same values.
 - **`Resources/PluginKit` and `Resources/PluginDescription` are Scrift source, never compiled into the
   app.** They ship as folder resources (`project.yml`), and the Swift compiler never sees them.
 
@@ -82,7 +86,7 @@ let plugin = Plugin(
         .view("clocks", title: "World Clock", subtitle: "Time zones", keywords: ["time"]),
         .view("convert", title: "Convert Time", arguments: [.text("time", placeholder: "3pm")]),
         .action("copy-utc", title: "Copy UTC Time"),
-        .menuBar("menu", title: "World Clock in the Menu Bar", interval: "1m"),
+        .menuBar("menu", title: "World Clock in the Menu Bar", interval: .minutes(1)),
     ]
 )
 ```
@@ -93,7 +97,8 @@ command does its work and closes the palette, and with an `interval` also runs i
 `icon` shows the plugin's title or icon. Commands take `arguments` (fields the launcher shows after
 the title) and `preferences`; the plugin's `preferences` apply to all of them. Preferences are
 `textField`, `password`, `checkbox`, `dropdown`, `application`, `file` and `directory`, edited in
-Settings, and a required one without a value is asked for before the command runs. `permissions` are
+Settings; a command whose required preference has no value asks to open Settings at its plugin
+instead of running. `permissions` are
 `.network`, `.clipboard`, `.selection` and `.openURLs(schemes:)`. A typo in any of these is a compile
 error in `Manifest.swift`, with its line. The manifest runs alone: it can't
 import `Tinycast` or the plugin's other files, and it has no network whatever it declares.
@@ -115,14 +120,16 @@ A view is written the way SwiftUI's are:
 struct Clocks: View {
     @Preference("home") private var home: String
     @AppStorage("pinned") private var pinned = ""
+    @State private var cities: [City] = []
 
     var body: some View {
         List {
             Section("Cities") {
                 ForEach(cities) { city in
-                    Item(city.name, subtitle: city.time, systemImage: "clock")
-                        .actions {
-                            CopyButton(text: city.time)
+                    Label(city.name, systemImage: "clock")
+                        .badge(city.time)
+                        .contextMenu {
+                            ShareLink("Copy Time", item: city.time)
                             Button("Pin") { pinned = city.name }
                                 .keyboardShortcut("p", modifiers: [.command, .shift])
                             NavigationLink("Details") { CityDetail(city: city) }
@@ -136,21 +143,22 @@ struct Clocks: View {
 }
 ```
 
-Without `.searchable`, Tinycast filters the rows by title, subtitle and `.keywords`. With
-`.searchable(text: $query)`, the plugin gets each keystroke and filters its rows itself, usually
-with `.task(id: query)`, which cancels and restarts its work as the query changes.
+A row is any view in a `List` or `Grid`: `Text`, `Label`, or a view of the plugin's own. Its
+`.contextMenu` holds its actions. Without `.searchable(text:)`, Tinycast filters the rows by title,
+subtitle and `.searchKeywords`. With `.searchable(text: $query)`, the plugin gets each keystroke and
+filters its rows itself, usually with `.task(id: query)`, which cancels and restarts its work as the
+query changes.
 
 Three complete plugins are in [`Examples/Plugins`](../../Examples/Plugins). Copy a folder into the
 Plugins folder to install it:
 
-- **`hacker-news`** (port of Raycast's Hacker News): front page, newest, Ask HN and Show HN from HN's
-  Algolia API, chosen in the search bar's dropdown, plus search as you type, and the top story in the
-  menu bar. Shows `network`, `@AppStorage`, `searchBarAccessory`, `.task(id:)` and cancellation, and a
-  `MenuBarExtra` with ⌥ alternates.
-- **`cleanshot-x`** (port of Raycast's CleanShot X): every CleanShot X tool as a launcher command, plus
+- **`hacker-news`**: front page, newest, Ask HN and Show HN from HN's Algolia API, chosen in a
+  toolbar `Picker`, plus search as you type, and the top story in the menu bar. Shows `network`,
+  `@AppStorage`, `.toolbar`, `.task(id:)` and cancellation, and a `MenuBarExtra` with ⌥ alternates.
+- **`cleanshot-x`**: every CleanShot X tool as a launcher command, plus
   a list of them whose ⌘K menu says what to do with the capture. Shows `.openURLs` and action
   commands registered in a loop.
-- **`google-translate`** (port of Raycast's Google Translate): translate there and back or into a
+- **`google-translate`**: translate there and back or into a
   saved set of languages as you type, a form, Quick Translate into every target at once, and instant
   copy, paste and HUD actions on the selection. Shows `.selection`, `launchCommand` with a context,
   debounced `.task(id:)`, a `Form` whose bindings start tasks, and `@AppStorage` sets. Text to speech
@@ -158,28 +166,30 @@ Plugins folder to install it:
 
 ## The kit
 
-The `Tinycast` module every plugin imports (`Resources/PluginKit`). Each view renders the Raycast
-component of the same role, so a plugin looks and behaves like an extension:
+The `Tinycast` module every plugin imports (`Resources/PluginKit`). Its names are SwiftUI's wherever
+SwiftUI has the idea:
 
 | Kind | API |
 |---|---|
 | Screens | `List`, `Grid(columns:aspectRatio:fit:inset:)`, `Detail(markdown:)`, `Form`, `MenuBarExtra` |
-| Rows | `Section`, `Item`, `ForEach`, `Group`, `EmptyView`, `ContentUnavailableView` |
-| List and grid modifiers | `navigationTitle`, `searchable(text:prompt:)`, `searchable(prompt:)`, `loading`, `showingDetail`, `selection`, `searchBarAccessory(Dropdown)`, `actions { }`, `task`, `task(id:)` |
-| Item modifiers | `id`, `badge`, `accessory(_:image:tooltip:)`, `accessory(date:)`, `tag`, `keywords`, `tint`, `content`, `actions { }`, `detail { Detail }` |
-| Detail | `metadata { LabeledContent, MetadataLink, TagList { Tag }, Divider }`, `actions { }`, `loading`, `task` |
-| Form fields | `TextField`, `SecureField`, `TextEditor`, `Toggle`, `Picker { Choice }`, `TagPicker`, `DatePicker`, `FilePicker`, `Text`, `Divider`; each takes `id`, `info`, `error`, `autoFocus`, `storeValue` |
-| Menu bar | `MenuItem` (`keyboardShortcut`, `alternate`), `Menu`, `Section`, `Divider` |
-| Actions | `Button`, `Link`, `NavigationLink`, `CopyButton`, `PasteButton`, `ShowInFinderButton`, `OpenWithButton`, `TrashButton`, `SubmitButton`, `ActionSection`, `ActionMenu`, `.keyboardShortcut(_:modifiers:)` |
-| State | `@State`, `@Binding`, `@AppStorage` and `LocalStorage` (String, Int, Double, Bool), `Cache`, `@Preference` |
-| Launch | `Plugin.commandName`, `arguments`, `launchType`, `launchContext`, `fallbackText`, `isDarkAppearance` |
-| Host | `showToast` (a `Toast` to change or hide), `showHUD`, `confirmAlert`, `Clipboard`, `open`, `showInFinder`, `closeMainWindow`, `popToRoot`, `clearSearchBar`, `openPreferences`, `launchCommand`, `updateCommandMetadata`, `getApplications`, `getDefaultApplication`, `getFrontmostApplication`, `dismiss` |
+| Rows | `Text`, `Label`, `Section`, `ForEach`, `Group`, `EmptyView`, `ContentUnavailableView` (and `.search(text:)`) |
+| Screen modifiers | `navigationTitle`, `searchable(text:prompt:)`, `searchable(prompt:)`, `toolbar { Button, Picker }`, `loading`, `showsDetail`, `List(selection:)`, `task`, `task(id:)`, `refreshable` |
+| Row modifiers | `id`, `subtitle`, `badge` (text, count, `Tag`, `Image`, `Label`), `searchKeywords`, `foregroundStyle`, `tag`, `help`, `redacted(reason:)`, `contextMenu { }`, `detail { Detail }` |
+| Detail | `metadata { LabeledContent, Link, TagList { Tag }, Divider }`, `toolbar`, `loading`, `task` |
+| Form fields | `TextField`, `SecureField`, `TextEditor`, `Toggle`, `Picker`, `MultiPicker`, `DatePicker`, `FilePicker`, `Text`, `Divider`; `fieldError`, `defaultFocus`, `help` |
+| Menu bar | `Button` (`keyboardShortcut`, `alternate`), `Menu`, `Section`, `Divider` |
+| Actions | `Button` (with a `role`), `Link`, `NavigationLink`, `ShareLink`, `PasteButton`, `ShowInFinderButton`, `OpenWithButton`, `TrashButton`, `Menu`, `Section`, `.keyboardShortcut(_:modifiers:)` |
+| Images | `Image(systemName:)`, `Image(_:)` (a file in the plugin), `url:`, `contentsOfFile:`, `fileIconFor:`, `emoji:`, `color:`, with `foregroundStyle` and `clipShape` |
+| State | `@State`, `@Binding`, `@AppStorage` (any `Codable` value, stored as JSON), `@Preference`, `@Environment(\.dismiss)`, `@Environment(\.openURL)`, `@Environment(\.colorScheme)` |
+| Launch | `Plugin.commandName`, `Plugin.arguments`, `Plugin.launchType`, `Plugin.launchContext`, `Plugin.fallbackText` |
+| Host | `showToast` (a `Toast` to change or hide), `showHUD`, `confirmAlert`, `Clipboard`, `open`, `showInFinder`, `closeMainWindow`, `popToRoot`, `clearSearchBar`, `openPreferences`, `launchCommand`, `updateCommandMetadata`, `getApplications`, `getDefaultApplication`, `getFrontmostApplication` |
 
-↵ runs a row's first action, ⌘↵ its second, and ⌘K lists all of them. Escape pops a `NavigationLink`
-before it leaves the command. A `task` starts the first time its screen renders and is cancelled when
-the screen leaves the stack. Changing `@State` or `@AppStorage` renders again, once per script call.
-A `Button`'s action is synchronous, as in SwiftUI; start awaited work with `Task { … }`. A form
-field marked `storeValue` is saved when a `SubmitButton` runs and starts from that value next time.
+↵ runs a row's first action, ⌘↵ its second, and ⌘K lists all of them, then the toolbar's. A form's
+↵ runs its toolbar's first button. Escape pops a `NavigationLink` before it leaves the command. A
+`task` starts the first time its screen renders and is cancelled when the screen leaves the stack.
+Changing `@State` or `@AppStorage` renders again, once per script call. A `Button`'s action is
+synchronous, as in SwiftUI; start awaited work with `Task { … }`. A toolbar `Picker` sits beside the
+search field and opens with ⌘P.
 
 ## Permissions
 
@@ -188,20 +198,21 @@ field marked `storeValue` is saved when a `SubmitButton` runs and starts from th
 | `network` | `URLSession.shared.data(from:)` / `data(for:)`, `URLRequest`, `HTTPURLResponse`: http and https only, 16 MB per response, through a private ephemeral session with no cookies, cache or credentials |
 | `clipboard` | `import AppKit` with `NSPasteboard.general.string(forType: .string)` |
 | `selection` | `import Selection`: `selectedText()` and `selectedFinderItems()` |
-| `openURLs(schemes:)` | `open` and `Link` reach those app link schemes, such as `cleanshot`; never `file`, `tinycast`, `tinycast-dev`, `raycast` or `com.raycast` |
+| `openURLs(schemes:)` | `open` and `Link` reach those app link schemes, such as `cleanshot`; never `file`, `tinycast` or `tinycast-dev` |
 
-Writing to the clipboard (`CopyButton`, `Clipboard.copy`) and pasting need no permission.
+Writing to the clipboard (`ShareLink`, `Clipboard.copy`) and pasting need no permission.
 
 ## How it runs
 
 `PluginManager` (owned by `AppCore`) scans the folder when plugins are on and watches it with FSEvents.
-Each scan hands the Extensions host the plugins as `InstalledExtension`s with `engine: .plugin`, so the
-launcher lists their commands with the host's icon, hotkey, alias and argument handling, and the menu
-bar and background lanes schedule them. Code is read fresh on every launch.
+Each scan tells `PluginHost`, which lists every command in the launcher as an `AppEntry` of kind
+`.pluginCommand`, puts each menu bar command up as its own status item, and schedules the action
+commands that run in the background. Code is read fresh on every launch.
 
 Saving any file under a plugin's folder reloads it: the folder is rescanned (an unchanged manifest
 is a cache lookup), and a palette command running from that plugin, failed or not, launches again
-from the new code with the arguments and context it had (`ExtensionManager.relaunch(extension:)`).
+from the new code with the arguments and context it had (`PluginHost.relaunch(plugin:)`). Its menu
+bar items launch again too.
 An author sees an edit about a second after saving it, FSEvents' latency.
 
 `PluginCatalog.scan` runs each `Manifest.swift` through `PluginManifestReader`: the description loads
@@ -213,32 +224,40 @@ runs once per edit, not once per scan. A run costs about 300 ms the first time i
 compiling Foundation's slice and the description) and about 10 ms after. A scan removes entries no
 plugin used. Failures aren't kept.
 
-Launching a command makes a `ScriftPluginRuntime`, which the host drives like the JavaScript runtime:
+Launching a command makes a runtime, which `PluginHost` drives through `PluginRuntime`:
 
-1. `PluginCapabilities.modules(for:)` gives the context its host modules: `_TinycastHost` (the node
+1. `PluginCapabilities.modules(for:)` gives the context its host modules: `_TinycastHost` (the contract
    types, `PluginEnvironment`, `PluginLaunch`), Foundation with or without the network, and AppKit and
    `Selection` when granted.
 2. The kit loads as `Tinycast`, then the plugin's files as their own module, and `main.swift` runs;
    `_tinycastRegistrations` is checked against the manifest.
 3. `_tinycastBegin` hands the kit the session's `PluginEnvironment` and the launch (arguments,
    preferences, launch type and context). A view or menu bar command opens with `_tinycastOpen` and
-   renders with `_tinycastRender`; an action runs `_tinycastRun` to its end, its tasks included, and
+   is read with `_tinycastFrame`; an action runs `_tinycastRun` to its end, its tasks included, and
    finishes once the host has answered the calls it fired (a copy or a HUD it ends with).
-4. `PluginRenderer` turns each `PluginNode` tree into a `RenderTree` the host draws as it draws an
-   extension's. `PluginEnvironment.invalidate()` (state changed) coalesces into one render after the
-   script call. The host sends handler ids back through `dispatch`, Escape through `popNavigation`,
-   and a toast's button through `runToastAction`.
-5. Everything else a plugin asks of the app goes through `PluginEnvironment` to the host's
-   `ExtensionHostAPI`: the same toasts, HUDs, clipboard, windows, launches and storage a Raycast
-   command reaches.
+4. Each frame reaches `PluginRuntimeDelegate.didRender`. `PluginEnvironment.invalidate()` (state
+   changed) coalesces into one frame after the script call. The host sends back `PluginEvent`s:
+   `perform` (a handler, with the frame's generation; one from an older frame is dropped), `set` (a
+   binding's new value), `search` and `back`, and a toast's button through `runToastAction`.
+5. Everything else a plugin asks of the app is a `PluginHostCall`, which `PluginHostBridge` answers:
+   toasts, HUDs, the clipboard, opening, windows, launches, applications, the selection and sign-in.
+   A background or menu bar run is quiet: a toast it shows is dropped, and it can't paste, close
+   the palette or ask to confirm. An action's effect (open, copy, paste, reveal, open with, trash) is
+   performed by the host (`PluginEffects`) after it checks the plugin's grants, then its handler
+   runs.
+
+`PluginHost` keeps one lane per kind of run. The palette's command is one session, replaced by the
+next. An action run has a lane of its own and is stopped after 120 s. A menu bar command keeps its
+runtime while its item is up, and launches again every `interval` (no more often than every 10 s)
+or when its plugin changes. A background action runs when it's due, no more often than every 60 s,
+and its last run is stored, so a relaunch of Tinycast doesn't run it early.
 
 A plugin command's deep link is `tinycast://plugins/<name>/<command>` (`tinycast-dev://` in Debug),
-with Raycast's `arguments`, `launchType` and `context` query items; Copy Deeplink gives that form.
-`ExtensionDeepLink` reads it as the host name `plugin.<name>`, which also works in an `extensions/`
-link. Raycast's schemes never reach a plugin. Hotkeys and deep links run a plugin's command whether
-or not Raycast extensions are switched on.
+with `arguments` (a JSON object), `fallbackText`, `launchType=background` and `context` (a JSON
+object) in its query; Copy Deeplink gives that form. `PluginDeepLink` reads it. Hotkeys and deep
+links run a plugin's command only while plugins are on.
 
-`OAuth.PKCEClient` signs in with OAuth 2.0 and PKCE as Raycast's does. `authorizationRequest`
+`OAuth.PKCEClient` signs in with OAuth 2.0 and PKCE. `authorizationRequest`
 builds the URL natively (a `SecRandomCopyBytes` verifier, its S256 challenge, a state nonce), with
 Tinycast's own redirect `tinycast://oauth?plugin=<name>` unless the plugin names a custom one.
 `authorize` runs the host's browser sign-in, checks the returned state and gives back the code; the
@@ -247,9 +266,11 @@ plugin's storage (`setTokens`, `getTokens` with `isExpired`, `removeTokens`). Th
 the plugin's own `URLSession` request, under the `network` permission. Sign-in is refused in a
 background run.
 
-Settings › Plugins opens each plugin to the same card as an extension's: show in launcher, launcher
-icon, preferences, and per command its alias, hotkey, visibility, menu bar toggle and background
-refresh. "Configure Plugin" in the launcher opens that card; "Show in Finder" replaces uninstall.
+Settings › Plugins opens each plugin to a card (`PluginSettingsCard`): its preferences, then per
+command its alias, hotkey, launcher visibility, and its menu bar or run-in-the-background switch,
+and Sign Out once it holds tokens. Settings runs in a process of its own, so the card reads
+`MainAppStatus.plugins` and sends each edit as a `SettingsAction`; the main app owns `PluginStore`.
+"Configure Plugin" in the launcher opens that card; "Show in Finder" replaces uninstall.
 
 Compiled modules are cached in memory (`moduleCapacity`: 6 in the app, 12 in the helper, besides
 those running) and on disk in `Caches/ScriftModules`, which the app and the helper share. The kit
@@ -261,6 +282,26 @@ within the helper's lifetime is an in-memory hit.
 Errors (compile diagnostics with file and line, a panic, a limit) replace the screen with the message
 and the plugin's recent `print` output.
 
+## The view contract
+
+`Model/PluginUI.swift` is everything a plugin can show, as plain Codable values. A `PluginFrame` holds
+the contract's `version`, a `generation` that numbers it, the navigation `depth`, and one
+`PluginScreen`: `list`, `grid`, `detail`, `form`, `menuBar`, or `unsupported`. Every screen but the
+menu bar has a `PluginChrome`: title, search field, toolbar pickers and actions, and a loading flag.
+Rows, fields, actions and menu items carry ids that hold from one frame to the next, so a selection
+survives a frame. A handler is an integer the kit hands out per frame; a binding (the search field,
+a list's selection, a picker, a field) is named by its node's id, and the host writes it with `set`.
+
+- **The contract is versioned.** `PluginProtocolVersion.current` is 1.0. A frame of a newer major
+  version fails the command; a newer minor version's unknown cases decode as `unsupported` and draw
+  as a placeholder, so an old Tinycast reads a new kit's frames.
+- **A frame is whole.** The kit sends the full screen each time, never a diff. The largest example,
+  65 KB for a Hacker News page of stories, encodes in about 2.5 ms.
+- **The host's views know only the contract.** `PluginCommandView`, `PluginFormView` and
+  `PluginMenuBarItem` draw a frame; `PluginScreenLayout` walks it for the palette (the rows in order,
+  filtering when the plugin has no search binding, the actions of a row). The golden files in
+  `Tests/PluginHost/Fixtures/contract` fix the JSON of every case.
+
 ## The plugin helper
 
 `PluginHelper` is a `tool` target embedded in `Contents/Helpers`, like `FileIndexHelper`. Its sources
@@ -270,18 +311,18 @@ the same files). `PluginHelperClient` (the app's end, owned by `PluginManager`) 
 `PipeFraming` JSON both ways (`PluginHelperWire.swift`), not XPC, as with the app's other helpers.
 
 - **A launch carries everything.** `PluginHelperLaunch` has the manifest's JSON, the plugin's and the
-  kit's folders, the `ExtensionLaunchContext` the host made, and a `PluginStorageSnapshot` of the
+  kit's folders, the `PluginLaunch` the host made, and a `PluginStorageSnapshot` of the
   plugin's storage. The helper keeps nothing between launches but its compile cache.
 - **The helper runs a `ScriftPluginRuntime` per launch,** numbered by the app. Its delegate callbacks
-  (renders, failures, navigation depth, finishing, logs) become events, and `RemotePluginRuntime`
-  hands them to the Extensions host as an in-process runtime would. Requests that wait (`dispatch`,
-  `pop`, `stop`, `drain`, `toastAction`, `scan`) carry a reply number.
-- **Host calls go back to the app.** The runtime's `ExtensionHostAPI` in the helper sends a `hostCall`
-  and awaits the app's `hostAnswer`; the app runs it with its own host API. Clipboard,
+  (frames, failures, finishing, logs) become events, and `RemotePluginRuntime` hands them to
+  `PluginHost` as an in-process runtime would. Requests that wait (`event`, `stop`, `drain`,
+  `toastAction`, `scan`) carry a reply number.
+- **Host calls go back to the app.** The runtime's `PluginHostAPI` in the helper sends a `hostCall`
+  and awaits the app's `hostAnswer`; the app runs it with its own `PluginHostBridge`. Clipboard,
   Accessibility, opening URLs, toasts and sign-in therefore keep the app's permissions and checks.
 - **Storage is mirrored.** Getters must answer synchronously, so the helper's `PluginStorageMirror`
   answers from the launch's snapshot and sends every write back as a `PluginStorageWrite`, which the
-  app applies to `ExtensionStorage` in order. The app stays the only writer of the files.
+  app applies to `PluginStore` in order. The app stays the only writer of the files.
 - **Manifests are plugin code too.** `PluginManager`'s scan runs in the helper (`scan`), which runs
   `PluginCatalog.scan` and sends each manifest's JSON or its `PluginManifestError` back.
 - **A crash ends sessions, not the app.** When the link closes, waiting requests get nothing and each
@@ -332,25 +373,27 @@ written by `PluginManifest.json()` and read by `PluginManifest.decode`. The tool
 
 ## Testing
 
-`./Scripts/test-plugins.sh` builds `Tests/PluginHost`, a SwiftPM package that links the real Scrift and
-drives `ScriftPluginRuntime` the way the Extensions host does (launch, render, dispatch, pop, stop),
-against a host that records every call. Its checks cover manifests and their errors, the catalog's
-cache, the translation into the host's manifest, registration checks, rendering into Raycast's
-component shapes, bindings, navigation, storage, forms with stored values, grids and their dropdown,
-menu bar commands, preferences, toasts and their actions, `launchCommand`, action commands, compile
-errors, runaway loops, permission gating and `open` rules, using `Tests/PluginHost/Fixtures` and
+`./Scripts/test-plugins.sh` builds `Tests/PluginHost`, a SwiftPM package that links the real Scrift, and
+runs two suites. `PluginContractTests` encodes every case of the view contract against its golden
+JSON in `Fixtures/contract` (`UPDATE_GOLDEN=1` rewrites them) and checks that a newer minor
+version's frames decode as placeholders. `PluginHostTests` drives `ScriftPluginRuntime` the way
+`PluginHost` does (launch, frames, `perform`, `set`, `search`, `back`, stop) against a host that
+records every call. Its checks cover manifests and their errors, the catalog's cache, registration
+checks, frames against snapshots in `Fixtures/frames` (`UPDATE_SNAPSHOTS=1`), bindings, navigation,
+storage, forms, grids and their toolbar picker, menu bar commands, preferences, toasts and their
+actions, `launchCommand`, action commands, compile errors, runaway loops, permission gating and
+`open` rules, the palette's walk of a frame (`PluginScreenLayout`), entry IDs and deep links, and
+which commands lose their references when a plugin changes, using `Tests/PluginHost/Fixtures` and
 `Examples/Plugins`. It then runs `tinycast-plugin dump` on every example. The Hacker News and Google
 Translate checks call the live APIs, and are skipped when they're unreachable. The plugin helper's
 checks spawn the real `plugin-helper` binary and drive it through `PluginHelperClient` and
-`RemotePluginRuntime`: renders, handlers, host calls, storage writes and reading them back,
+`RemotePluginRuntime`: frames, handlers, host calls, storage writes and reading them back,
 navigation, a crash and the respawn after it, failed launches, runaway loops, the scan, and idle
-exit. Its sources are
-symlinks to `Features/Plugins` and the Extensions model files the runtime uses. The first run builds
-Scrift and swift-syntax and takes a few minutes.
+exit. Its sources are symlinks to `Features/Plugins` and the few app files they use. The first run
+builds Scrift and swift-syntax and takes a few minutes.
 
-`./Scripts/bench-plugins.sh` compares the engines: `plugin-bench`, in the same package, runs one
-command under either the Raycast JS runtime or this one, a fresh runtime per launch as the palette
-does, and reports time to first render and to content, CPU, memory during the launch and retained
-after it. `plugin-bench helper` runs the Scrift case in the plugin helper as the app does: the app's
-side is then the pipe, and the helper's footprint is reported separately. The JS versions are installed store extensions (Google Translate's only when
-`BENCH_JS_GOOGLE_TRANSLATE` points at a build of it).
+`./Scripts/bench-plugins.sh` measures a command: `plugin-bench`, in the same package, runs one
+command with a fresh runtime per launch as the palette does, and reports time to first frame and to
+content, each frame's size and encode time, CPU, memory during the launch and retained after it.
+`plugin-bench helper` runs it in the plugin helper as the app does: the app's side is then the pipe,
+and the helper's footprint is reported separately.
