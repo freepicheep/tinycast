@@ -1,6 +1,6 @@
 import Foundation
 
-/// A built-in `tinycast://` link; an extension link never parses as one. See deeplinks.md.
+/// A built-in `tinycast://` link; a plugin link never parses as one. See deeplinks.md.
 enum DeepLink: Equatable, Sendable {
     case launcher(fallbackText: String?)
     /// `<kind>/<id>` for the launcher row `<kind>:<id>`, run as its shortcut would be.
@@ -11,8 +11,7 @@ enum DeepLink: Equatable, Sendable {
     case chat(id: UUID)
     case windowSize(CustomWindowSize)
 
-    /// Extension and plugin links own these hosts, so built-in parsing must never claim them.
-    static let extensionsHost = "extensions"
+    /// Plugin links own this host, so built-in parsing must never claim it.
     static let pluginsHost = "plugins"
     static let searchHost = "search"
     static let windowSizeHost = "window-size"
@@ -71,7 +70,7 @@ enum DeepLink: Equatable, Sendable {
         case (windowSizeHost, true):
             guard case .named(let fields)? = input.arguments else { return nil }
             return CustomWindowSize(linkFields: fields).map { .windowSize($0) }
-        case (extensionsHost, _), (pluginsHost, _), (_, true):
+        case (pluginsHost, _), (_, true):
             return nil
         default:
             return HotKeyAction(entryID: host + ":" + path).map { .entry($0, input) }

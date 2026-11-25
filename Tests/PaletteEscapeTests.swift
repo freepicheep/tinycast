@@ -67,13 +67,13 @@ struct PaletteEscapeTests {
             .clearQuery,
             "a typed launcher query clears before the palette hides")
         expect(
-            resolve(query: "notes", mode: .extensionCommand),
+            resolve(query: "notes", mode: .pluginCommand),
             .clearQuery,
-            "a typed extension query clears before the extension screen exits")
+            "a typed plugin query clears before the plugin screen exits")
         expect(
-            resolve(mode: .extensionCommand),
-            .exitExtensionScreen,
-            "an empty extension query exits the extension screen, which owns its own stack")
+            resolve(mode: .pluginCommand),
+            .exitPluginScreen,
+            "an empty plugin query exits the plugin screen, which owns its own stack")
         expect(
             resolve(),
             .hidePalette,
@@ -112,9 +112,9 @@ struct PaletteEscapeTests {
             .hidePalette,
             "close-and-pop-to-root hides even where a back step exists")
         expect(
-            resolve(mode: .extensionCommand, canGoBack: true, behavior: .closeAndPopToRoot),
+            resolve(mode: .pluginCommand, canGoBack: true, behavior: .closeAndPopToRoot),
             .hidePalette,
-            "close-and-pop-to-root outranks an extension's own stack too")
+            "close-and-pop-to-root outranks a plugin's own stack too")
         expect(
             resolve(query: "notes", behavior: .closeAndPopToRoot),
             .clearQuery,
@@ -129,9 +129,9 @@ struct PaletteEscapeTests {
             .closeMenu,
             "a menu outranks the chat screen it is drawn over")
         expect(
-            resolve(menuOpen: true, mode: .extensionCommand),
+            resolve(menuOpen: true, mode: .pluginCommand),
             .closeMenu,
-            "a menu outranks the extension screen it is drawn over")
+            "a menu outranks the plugin screen it is drawn over")
         // An inline argument field is deeper than the query that found the command.
         expect(
             resolve(argumentFocused: true, query: "search"),

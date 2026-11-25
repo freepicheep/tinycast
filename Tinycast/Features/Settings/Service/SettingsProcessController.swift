@@ -220,18 +220,18 @@ final class SettingsProcessController {
             core.stopSettingsFile()
         case .setSettingsFile(.start(let importing)):
             core.startSettingsFile(importing: importing)
-        case .setExtensionAppearance(let name, let appearance):
-            core.extensions.setAppearance(appearance, for: name)
+        case .setPluginPreference(let plugin, let key, let value):
+            core.pluginHost.store.setPreference(value, plugin: plugin, name: key)
             send(makeStatus())
-        case .setExtensionBackground(let reference, let enabled):
-            core.extensions.setBackgroundEnabled(
-                enabled, extension: reference.extensionName, command: reference.commandName)
+        case .setPluginBackground(let ref, let enabled):
+            core.pluginHost.setRunsInBackground(enabled, ref)
             send(makeStatus())
-        case .setExtensionMenuBar(let reference, let enabled):
-            core.extensionCoordinator.setMenuBarEnabled(enabled, reference: reference)
+        case .setPluginMenuBar(let ref, let enabled):
+            core.pluginHost.setShowsInMenuBar(enabled, ref)
             send(makeStatus())
-        case .setExtensionPreference(let name, let key, let value):
-            core.extensions.storage.setPreference(extension: name, key: key, value: value)
+        case .signOutPlugin(let plugin):
+            core.pluginHost.store.signOut(plugin: plugin)
+            send(makeStatus())
         case .reloadPlugins:
             Task { await core.plugins.refresh() }
         case .discardBackup(let id):
@@ -245,16 +245,12 @@ final class SettingsProcessController {
 
     private func start(_ call: SettingsWire.Call, id: UUID) {
         guard let link, !isClosing, calls[id] == nil else { return }
-        let report: @MainActor @Sendable (ExtensionCallEvent) -> Void = { [weak link] event in
-            link?.send(.extensionProgress(id, event))
-        }
         calls[id] = Task { [weak self, weak link] in
             guard let self, let link else { return }
             let reply: SettingsWire.Reply
             do {
                 try Task.checkCancellation()
                 switch call {
-                case .extensions(let call): reply = try await performExtension(call, report: report)
                 case .mcp(let call): reply = try await performMCP(call)
                 case .backup(let call): reply = try await performBackup(call, id: id)
                 }
@@ -269,46 +265,6 @@ final class SettingsProcessController {
             if case .mcp = call { send(makeStatus()) }
             link.send(.reply(id, reply))
         }
-    }
-
-    private func performExtension(
-        _ call: ExtensionCall, report: @escaping @MainActor @Sendable (ExtensionCallEvent) -> Void
-    ) async throws -> SettingsWire.Reply {
-        let extensions = core.extensions
-        let onProgress: @Sendable (ExtensionInstaller.Progress) -> Void = { progress in
-            Task { @MainActor in report(.installing(progress)) }
-        }
-        var result = ExtensionCallResult()
-        switch call {
-        case .refresh:
-            await extensions.refresh()
-        case .checkForUpdates:
-            await extensions.checkForUpdates()
-        case .installFolder(let folder):
-            try await extensions.install(from: folder)
-        case .importFromRaycast(let directories):
-            let chosen = await Task.detached(priority: .userInitiated) {
-                ExtensionCatalog.importableFromRaycast().filter { directories.contains($0.directory) }
-            }.value
-            try Task.checkCancellation()
-            result.failures = await extensions.importAllFromRaycast(chosen) { report(.imported($0)) }
-        case .update(let names):
-            result.failures = await extensions.update(names)
-        case .installListing(let listing):
-            try await extensions.install(listing, onProgress: onProgress)
-        case .installGitHub(let source):
-            let settings = core.settings
-            result.installedTitle = try await extensions.install(
-                source, packageManager: settings.extensionPackageManager,
-                additionalSearchPaths: settings.extensionCustomSearchPaths,
-                onProgress: onProgress
-            ).title
-        case .uninstall(let name):
-            if let owner = extensions.installed.first(where: { $0.manifest.name == name }) {
-                await extensions.uninstall(owner)
-            }
-        }
-        return .extensions(result)
     }
 
     private func performMCP(_ call: MCPSettingsCall) async throws -> SettingsWire.Reply {
@@ -430,22 +386,19 @@ final class SettingsProcessController {
             updates: MainAppStatus.Updates(
                 updatesItself: updates.updatesItself, isChecking: updates.isChecking,
                 lastCheckedAt: updates.lastCheckedAt, availableVersion: updates.availableVersion?.description),
-            extensions: extensionsStatus())
+            plugins: pluginsStatus())
     }
 
-    private func extensionsStatus() -> MainAppStatus.Extensions {
-        let extensions = core.extensions
-        var status = MainAppStatus.Extensions(
-            catalogRevision: extensions.installed.hashValue,
-            updates: extensions.updates.mapValues(\.title), updating: extensions.updating)
-        for owner in extensions.installed {
-            let name = owner.manifest.name
-            status.appearances[name] = extensions.appearances.appearance(for: name)
-            for command in owner.manifest.commands {
-                var metadata = extensions.backgroundInfo(extension: name, command: command.name)
-                metadata.menuBarSnapshot = nil
-                let reference = ExtensionCommandRef(extensionName: name, commandName: command.name)
-                status.commands[reference.entryID] = metadata
+    /// Read from the main app's store, which Settings never writes itself.
+    private func pluginsStatus() -> MainAppStatus.Plugins {
+        let store = core.pluginHost.store
+        var status = MainAppStatus.Plugins(revision: core.plugins.installed.hashValue)
+        for (manifest, _) in core.plugins.readable {
+            status.preferences[manifest.name] = store.preferences(plugin: manifest.name)
+            if store.isSignedIn(plugin: manifest.name) { status.signedIn.insert(manifest.name) }
+            for command in manifest.commands {
+                let ref = PluginCommandRef(plugin: manifest.name, command: command.name)
+                status.commands[ref.entryID] = store.settings(ref)
             }
         }
         return status

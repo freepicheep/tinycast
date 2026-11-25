@@ -18,13 +18,13 @@ public enum Plugin {
     /// A command that does its work and closes the palette, and may run again in the background
     /// when its manifest gives it an `interval`.
     public static func action(_ name: String, _ run: @escaping () async throws -> Void) {
-        _registrations[name] = "no-view"
+        _registrations[name] = "action"
         _actions[name] = run
     }
 
     /// A menu-bar command: its body is a `MenuBarExtra`.
     public static func menuBar<Content: View>(_ name: String, _ content: @escaping () -> Content) {
-        _registrations[name] = "menu-bar"
+        _registrations[name] = "menuBar"
         _views[name] = {
             let view = content()
             return { _resolve(view) }
@@ -43,13 +43,11 @@ public enum Plugin {
     /// What `launchCommand(_:context:)` passed, or a deep link's `context`.
     public static var launchContext: [String: PluginValue] { _launch?.launchContext ?? [:] }
 
-    /// Whether the user ran the command or its schedule did.
-    public static var launchType: LaunchType {
-        _launch?.launchType == "background" ? .background : .userInitiated
-    }
+    /// Every preference's value, by name; `@Preference` reads one typed.
+    public static var preferences: [String: PluginValue] { _launch?.preferences ?? [:] }
 
-    /// The palette's appearance when the command started.
-    public static var isDarkAppearance: Bool { _launch?.isDarkAppearance ?? false }
+    /// Whether the user ran the command or its schedule did.
+    public static var launchType: LaunchType { (_launch?.isBackground ?? false) ? .background : .userInitiated }
 }
 
 public enum LaunchType {
@@ -62,19 +60,17 @@ public enum LaunchType {
 var _environment: PluginEnvironment? = nil
 var _launch: PluginLaunch? = nil
 var _registrations: [String: String] = [:]
-var _views: [String: () -> () -> [_Element]] = [:]
+var _views: [String: () -> () -> [_Part]] = [:]
 var _actions: [String: () async throws -> Void] = [:]
 var _stack: [_Entry] = []
 
 /// One screen on the command's stack. A class, so the views it made keep their state.
 final class _Entry {
-    let render: () -> [_Element]
+    let render: () -> [_Part]
     var task: Task<Void, Never>?
     var taskKey: String?
-    /// The `storeValue` fields this screen has given their saved values already.
-    var restoredFields: Set<String> = []
 
-    init(_ render: @escaping () -> [_Element]) {
+    init(_ render: @escaping () -> [_Part]) {
         self.render = render
     }
 }
@@ -104,8 +100,6 @@ func _tinycastRun(_ name: String) async throws -> Bool {
     return true
 }
 
-func _tinycastDepth() -> Int { max(_stack.count, 1) }
-
 func _tinycastPop() -> Bool {
     guard _stack.count > 1 else { return false }
     _stack.removeLast().task?.cancel()
@@ -116,31 +110,9 @@ func _tinycastPop() -> Bool {
 func _tinycastEnd() {
     for entry in _stack { entry.task?.cancel() }
     _stack = []
+    _tables = []
     _environment = nil
 }
-
-/// The top of the stack as Tinycast draws it; starts the screen's `task` the first time.
-func _tinycastRender() -> PluginNode? {
-    guard let entry = _stack.last else { return nil }
-    _rendering = entry
-    let elements = entry.render()
-    _rendering = nil
-    for element in elements {
-        if case .screen(let node, let task) = element {
-            _start(task, in: entry)
-            return node
-        }
-    }
-    // A `body` of bare rows, with no `List` around them, still shows as one.
-    let rows = elements.compactMap { element -> PluginNode? in
-        if case .node(let node) = element { return node }
-        return nil
-    }
-    return _node("List", children: _retype(rows, container: "List"))
-}
-
-/// The screen being rendered, so a form field can restore its stored value once.
-var _rendering: _Entry? = nil
 
 func _start(_ task: _Task?, in entry: _Entry) {
     guard let task, entry.taskKey != task.key else { return }
@@ -151,11 +123,6 @@ func _start(_ task: _Task?, in entry: _Entry) {
 }
 
 // MARK: - What every command can ask of Tinycast
-
-/// Shows a short message, closing the palette.
-public func showHUD(_ text: String) {
-    _environment?.showHUD(text)
-}
 
 /// Closes the palette; the command keeps running until it returns.
 public func closeMainWindow(clearRootSearch: Bool = false) {
@@ -184,20 +151,6 @@ public func open(_ destination: String, application: String? = nil) {
 
 public func showInFinder(_ path: String) {
     _environment?.showInFinder(path)
-}
-
-/// Leaves the screen a `NavigationLink` pushed.
-public func dismiss() {
-    _ = _tinycastPop()
-}
-
-/// Asks the user, the way the rest of Tinycast asks; true when they confirm.
-public func confirmAlert(
-    title: String, message: String? = nil, primaryTitle: String? = nil, destructive: Bool = false
-) async -> Bool {
-    guard let environment = _environment else { return false }
-    return (try? await environment.confirm(
-        title: title, message: message, primaryTitle: primaryTitle, isDestructive: destructive)) ?? false
 }
 
 /// Runs another of this plugin's commands, with arguments and a context it reads as

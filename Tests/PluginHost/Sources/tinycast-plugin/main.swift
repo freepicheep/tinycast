@@ -4,7 +4,7 @@ import Foundation
 // tinycast-plugin run <plugin folder> <command> [seconds]
 //
 // `run` launches one command against a host that prints every call it gets, waits until it
-// finishes or `seconds` pass (5 by default), and prints its last screen as an outline.
+// finishes or `seconds` pass (5 by default), and prints its last frame as JSON.
 //
 // Runs the folder's Manifest.swift as Tinycast does, checks that main.swift compiles with the
 // permissions it declares and registers just the commands it declares, and prints the manifest as
@@ -12,10 +12,8 @@ import Foundation
 
 /// No command runs while checking, so nothing reaches the app.
 @MainActor
-final class NoHost: ExtensionHostAPI {
-    func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
-        throw ExtensionHostError.noActiveExtension
-    }
+final class NoHost: PluginHostAPI {
+    func perform(_ call: PluginHostCall) async throws -> PluginHostAnswer { throw PluginHostError.noSession }
     func sessionEnded() {}
 }
 
@@ -34,67 +32,43 @@ func fail(_ message: String) -> Never {
 
 /// Prints what a running command asks of the app.
 @MainActor
-final class PrintingHost: ExtensionHostAPI {
-    func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
-        let shown = arguments.map { $0.stringValue ?? ExtensionJSON.string(from: $0.jsonValue) }
-        print("host  " + ([api + "." + method] + shown).joined(separator: " "))
-        return method == "showToast" ? "1" : method == "confirmAlert" ? "true" : ""
+final class PrintingHost: PluginHostAPI {
+    func perform(_ call: PluginHostCall) async throws -> PluginHostAnswer {
+        print("host  \(call)")
+        switch call {
+        case .showToast: return .int(1)
+        case .confirm: return .bool(true)
+        default: return .none
+        }
     }
     func sessionEnded() {}
 }
 
 @MainActor
-final class Outcome: ExtensionRuntimeDelegate {
-    var tree: RenderTree?
+final class Outcome: PluginRuntimeDelegate {
+    var frame: PluginFrame?
     var failure: String?
     var finished = false
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree) { self.tree = tree }
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String) { failure = message }
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int) {}
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) { finished = true }
-    func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {}
-}
-
-/// `List "Cities"` with its children indented under it; handlers and nested nodes as props.
-func outline(_ node: RenderNode, depth: Int = 0) -> [String] {
-    let pad = String(repeating: "  ", count: depth)
-    var line = pad + node.type
-    if let title = node.string("title") ?? node.string("navigationTitle") { line += " \"\(title)\"" }
-    var nested: [(String, RenderNode)] = []
-    var shown: [String] = []
-    for (name, value) in node.props.sorted(by: { $0.key < $1.key }) where name != "title" {
-        if let child = value.nodeValue { nested.append((name, child)); continue }
-        if let id = value.handlerID { shown.append("\(name)=⟨\(id.split(separator: ":").first ?? "")⟩"); continue }
-        shown.append("\(name)=\(value.stringValue ?? ExtensionJSON.string(from: value.jsonValue))")
-    }
-    if !shown.isEmpty { line += "  " + shown.joined(separator: " ") }
-    var lines = [line]
-    for (name, child) in nested {
-        lines.append(pad + "  ." + name + ":")
-        lines += outline(child, depth: depth + 2)
-    }
-    for child in node.children { lines += outline(child, depth: depth + 1) }
-    return lines
+    func runtime(_ runtime: any PluginRuntime, session: String, didRender frame: PluginFrame) { self.frame = frame }
+    func runtime(_ runtime: any PluginRuntime, session: String, didFail message: String) { failure = message }
+    func runtime(_ runtime: any PluginRuntime, session: String, didFinish: Void) { finished = true }
 }
 
 @MainActor func run(_ folder: URL, command name: String, seconds: Double) async {
     let (manifest, _, kit) = read(folder)
-    guard let host = manifest.extensionManifest(), let command = host.commands.first(where: { $0.name == name })
-    else { fail("\(folder.lastPathComponent) declares no command “\(name)”") }
-    let storage = ExtensionStorage(
-        directory: FileManager.default.temporaryDirectory.appending(path: "tinycast-plugin-\(UUID())"))
+    guard manifest.commands.contains(where: { $0.name == name }) else {
+        fail("\(folder.lastPathComponent) declares no command “\(name)”")
+    }
     let runtime = ScriftPluginRuntime(
-        plugin: manifest, directory: folder, storage: storage, hostAPI: PrintingHost(), appScheme: "tinycast",
-        kitSources: { kit })
+        plugin: manifest, directory: folder, storage: PluginMemoryStorage(), hostAPI: PrintingHost(),
+        appScheme: "tinycast", kitSources: { kit })
     let outcome = Outcome()
     runtime.setDelegate(outcome)
-    let context = ExtensionLaunchContext(
-        extensionName: manifest.hostName, extensionTitle: manifest.title, commandName: name,
-        commandMode: command.mode, assetsPath: "", supportPath: "", preferences: [:], caches: [:],
-        arguments: [:], isDarkAppearance: false)
-    let owner = InstalledExtension(manifest: host, directory: folder, engine: .plugin)
+    let launch = PluginLaunch(
+        commandName: name, isBackground: false, arguments: [:], preferences: [:], fallbackText: nil,
+        launchContext: [:], isDarkAppearance: false)
     do {
-        try await runtime.launch(session: "run", owner: owner, command: command, context: context)
+        try await runtime.launch(session: "run", launch: launch)
     } catch {
         fail(error.localizedDescription)
     }
@@ -103,7 +77,11 @@ func outline(_ node: RenderNode, depth: Int = 0) -> [String] {
         try? await Task.sleep(for: .milliseconds(20))
     }
     if let failure = outcome.failure { fail(failure) }
-    if let root = outcome.tree?.activeRoot { print(outline(root).joined(separator: "\n")) }
+    if let frame = outcome.frame {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        print(String(decoding: (try? encoder.encode(frame)) ?? Data(), as: UTF8.self))
+    }
     if outcome.finished { print("finished") }
     await runtime.stop(session: "run")
 }

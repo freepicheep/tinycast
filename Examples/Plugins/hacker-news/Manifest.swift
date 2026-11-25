@@ -11,6 +11,6 @@ let plugin = Plugin(
         .view(
             "stories", title: "Hacker News", subtitle: "Top stories",
             keywords: ["hn", "news", "ycombinator", "y combinator"]),
-        .menuBar("top-story", title: "Top Story", subtitle: "In the menu bar", interval: "10m"),
+        .menuBar("top-story", title: "Top Story", subtitle: "In the menu bar", interval: .minutes(10)),
     ]
 )

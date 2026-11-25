@@ -17,7 +17,7 @@ final class LauncherCoordinator {
     private let menuSearchCoordinator: MenuSearchCoordinator
     private let windowSwitchCoordinator: WindowSwitchCoordinator
     private let notesCoordinator: NotesCoordinator
-    private let extensionCoordinator: ExtensionCoordinator
+    private let pluginCoordinator: PluginCoordinator
     private let calendarCoordinator: CalendarCoordinator
     /// The backup commands only, which need the live stores to gather from and apply to.
     private unowned let core: AppCore
@@ -37,7 +37,7 @@ final class LauncherCoordinator {
         menuSearchCoordinator: MenuSearchCoordinator,
         windowSwitchCoordinator: WindowSwitchCoordinator,
         notesCoordinator: NotesCoordinator,
-        extensionCoordinator: ExtensionCoordinator,
+        pluginCoordinator: PluginCoordinator,
         calendarCoordinator: CalendarCoordinator,
         core: AppCore
     ) {
@@ -55,7 +55,7 @@ final class LauncherCoordinator {
         self.menuSearchCoordinator = menuSearchCoordinator
         self.windowSwitchCoordinator = windowSwitchCoordinator
         self.notesCoordinator = notesCoordinator
-        self.extensionCoordinator = extensionCoordinator
+        self.pluginCoordinator = pluginCoordinator
         self.calendarCoordinator = calendarCoordinator
         self.core = core
     }
@@ -125,8 +125,8 @@ final class LauncherCoordinator {
             return
         }
         // Before the palette hides: a view command takes the palette over rather than closing it.
-        if app.kind == .extensionCommand {
-            extensionCoordinator.runExtensionCommand(app, arguments: arguments)
+        if app.kind == .pluginCommand {
+            pluginCoordinator.runPluginCommand(app, arguments: arguments)
             return
         }
         if app.kind == .meeting {
@@ -157,7 +157,7 @@ final class LauncherCoordinator {
             guard let snippetID = StoredSnippet.id(fromEntryID: app.id) else { return }
             snippetCoordinator.expandSnippet(id: snippetID, target: previous)
         case .command, .quickAction, .customCommand, .systemAction, .windowCommand, .windowLayout,
-            .windowRoom, .quicklink, .appleShortcut, .extensionCommand, .meeting:
+            .windowRoom, .quicklink, .appleShortcut, .pluginCommand, .meeting:
             break  // handled above
         }
     }
@@ -303,7 +303,7 @@ final class LauncherCoordinator {
             return CustomCommandArgumentsAccessory.values(for: command, vm: palette)
         default:
             var values: [String: String] = [:]
-            for argument in extensionCoordinator.commandArguments(for: entry) ?? [] {
+            for argument in pluginCoordinator.commandArguments(for: entry) ?? [] {
                 let typed = palette.commandArguments[PaletteState.argumentKey(entry.id, argument.name)]
                 if let typed, !typed.isEmpty { values[argument.name] = typed }
             }
@@ -313,15 +313,15 @@ final class LauncherCoordinator {
 
     func deepLink(for app: AppEntry) -> URL? {
         let values = argumentValues(for: app)
-        guard app.kind != .extensionCommand else {
-            return extensionCoordinator.deepLink(forEntryID: app.id, arguments: values)
+        guard app.kind != .pluginCommand else {
+            return pluginCoordinator.deepLink(forEntryID: app.id, arguments: values)
         }
         return core.deepLinkCoordinator.url(forEntryID: app.id, values: values)
     }
 
     func deepLink(for action: HotKeyAction) -> URL? {
-        if case .extensionCommand(let entryID) = action {
-            return extensionCoordinator.deepLink(forEntryID: entryID, arguments: [:])
+        if case .pluginCommand(let entryID) = action {
+            return pluginCoordinator.deepLink(forEntryID: entryID, arguments: [:])
         }
         return action.entryID.flatMap { core.deepLinkCoordinator.url(forEntryID: $0) }
     }

@@ -34,22 +34,6 @@ TINYCAST_TEST_APPLE_INTELLIGENCE=1 ./Scripts/run-tests.sh AppleIntelligenceTests
 
 The opt-in check still skips with a reason if the Mac cannot run the on-device model.
 
-Two runtime areas also have standalone checks:
-
-```sh
-node Scripts/raycast-runtime/modules-fixtures.mjs
-node Scripts/raycast-runtime/oauth-fixtures.mjs
-```
-
-`modules-fixtures` covers shipped CommonJS packages, exports maps, relative directories, nested
-dependencies, cycles, failed-load retries and the extension-root boundary. `oauth-fixtures` signs in
-through a stand-in for the hosted redirect page and confirms that a callback whose `state` is absent,
-repeated, stale or wrong is refused, for each redirect method and for custom `{ url }` requests. The
-runtime fixture suite runs both as well.
-
-`ExtensionTests` exercises `SharedArrayBuffer` allocation at command load and finite waits in JavaScriptCore
-through the shipped synchronous host bridge.
-
 The suite runs four harnesses at a time by default to reduce CPU usage. `TINYCAST_TEST_JOBS` overrides
 that limit; `TINYCAST_TEST_JOBS=1` runs one at a time. Each result is numbered
 against the total and shows its run and compile time, a quiet stretch names the harnesses still running, and a harness that runs longer
@@ -138,7 +122,7 @@ If a change touches anything in the right column, the harness on the left is man
 | `PaletteNavigationTests`    | `Palette/PaletteState.swift`'s screen motions (`prepare`, `replace`, `push`, `pop`) and hover arming, pointer drift, scroll disarming and highlight tokens                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `CompactBarTests`           | Compact shortcut order, selection boundaries, zero-to-four slots, identifiers, isolated preferences and invalid settings-file rejection                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `PaletteSelectionTests`     | `Features/PaletteRowIndex.swift`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `InterfaceSizeTests`        | `DesignSystem/InterfaceMetrics.swift`, `Features/Settings/InterfaceSize.swift`, `Extensions/Model/ExtensionFormMetrics.swift`                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `InterfaceSizeTests`        | `DesignSystem/InterfaceMetrics.swift`, `Features/Settings/InterfaceSize.swift`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `FormInputTests`            | Native field/textarea sizing, editing alignment, placeholders, Tab, Unicode selection, undo and code fonts                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `PalettePlacementTests`     | `DesignSystem/Theme.swift`, `Palette/PalettePlacement.swift`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `PaletteMenuClickTests`     | `Palette/PalettePanel.swift`: complete click-away presses and subsequent control activation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -175,20 +159,13 @@ If a change touches anything in the right column, the harness on the left is man
 | `NotesTests`                | all of `Notes/Model/` and `Notes/Service/`, including the Markdown parser, edit plans and reveal policy, plus the real fuzzy matcher and signposts                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `NotesEditorTests`          | the Notes editor, rendered and literal, with real TextKit 2 and AppKit editing objects: styling, reveal, layout fragments, keys, chords, clicks beside hidden syntax, checkboxes and links                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `RaycastTests`              | `Backup/Service/RaycastDecoder.swift`, `Scrypt.swift`, `Platform/Compression/Zlib.swift`, `Clipboard/Model/RaycastClipboardImport.swift` and import-time clipboard retention                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `SymbolsTests`              | `Extensions/Service/SymbolCatalog.swift`, against this machine's CoreGlyphs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `ExtensionStoreTests`       | `Extensions/Model/`: GitHub source parsing and URLs, the store and Git tree parsers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `ExtensionRefreshTests`     | `Extensions/Model/ExtensionRefreshPolicy.swift`: interval parsing, due dates, backoff, subtitle fallback, indicator state, Refresh Now refusals                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `ExtensionVersionTests`     | `Extensions/Service/ExtensionVersionStore.swift`: what an update check reports, adopts and forgets                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `ExtensionMetadataTests`    | `Extensions/Service/ExtensionCommandMetadataStore.swift`: round-trip, failure runs, uninstall                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `ExtensionTests`            | the extension runtime and native menu-bar lifecycle: boots shipped sources in JavaScriptCore; menu tests cover restoration, refresh serialization, actions and teardown; fetch tests cover HTTP connection cleanup, cancellation and request isolation                                                                                                                                                                                                                                                                                                                                       |
-| `ExtensionIconTests`        | `Extensions/Service/ExtensionIconCache.swift`: artwork sizing and its fallback                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `ExtensionSignInTests`      | `Extensions/Service/ExtensionSignInSession.swift`: browser start failures, completion, cancellation without a callback, and late callbacks after teardown                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `IconCacheTests`            | `Platform/Images/IconCache.swift`: row sizing at 1×/2×, warm reuse, stamp and style invalidation, bitmap release, fitted geometry across all 256 alpha values, and that a row icon draws identically to the 96px one                                                                                                                                                                                                                                                                                                                                                                         |
 | `EntryIconTests`            | `EntryIcon`: that each case draws, caches and prints apart from the others, and that a moved `FileIconStamp` retires the bitmap decoded before it                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `TextDiffTests`             | `QuickActions/Model/TextDiffEngine.swift`: exact chunks, coalescing, Unicode, ties, token-cap boundaries and fast paths                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `CloudSyncTests`            | `CloudSync/Model/` and `Settings/Model/SettingsFileKey.swift`: record names, the ledger's diff, last-write-wins, edit-beats-delete, echo-free apply and re-fetch skip, category merge, setting scope (every feature switch, folder and device stays local) and entry-key spelling                                                                                                                                                                                                                                                                                                            |
 | `SettingsBackupTests`       | `Settings/AppSettingsKey.swift`, `Backup/Model/SettingsBackupCoverage.swift`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `SettingsFileTests`         | `Settings/Model/` and `Settings/Service/`: key paths, value tokens, the printer and parser, and the repository's import, replace, save, reload and symlink handling on a scratch folder                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `RaycastExtensionsMigrationTests`| `Migrations/RaycastExtensionsMigration.swift`: what Raycast extensions left (files, defaults, shortcuts, launcher keys) goes, plugin data stays, and settings.json is rewritten only when the retired keys are all that is wrong                                                                                                                                                                                                                                                                                                                                                        |
 | `WindowFileTests`           | `WindowManagement/Model/WindowManagementFileFormat.swift`: command shortcuts, custom sizes, layouts and rooms as settings.json spells them, hand edits and bad records                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `LauncherSettingsFileTests` | Launcher settings application: invalid records, partial edits, deferred bundles, shortcut moves and records outside search scopes; isolated preferences and in-memory scan/Carbon effects                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `BackupArchiveTests`        | all of `Backup/Model/`, plus `Backup/Service/BackupStaging.swift`: the bundle, the archive, and every `SettingsBackup` field in exactly one slice that a crafted file cannot widen                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -492,7 +469,7 @@ prefs, caches, TCC grants and login item, so this cannot disturb an installed co
   last row. The native caret blinks; mouse drag and ⌘A select text; ←/→ move through it; ↑/↓ still
   move the menu highlight. Escape clears a non-empty query, then closes the menu on the next press
 - The bottom-left app menu also searches from its bottom band; every header menu (including Emoji
-  categories, File Search filters and extension dropdowns) searches from its top band
+  categories, File Search filters and a plugin's toolbar picker) searches from its top band
 - The app menu opens at the ⌘K Actions menu's height with Check for Updates and Changelog, a
   separator, About, Support, then Settings partially visible; Settings and, after a separator, Quit
   scroll fully into view with the pointer or arrow keys. Filtering to fewer rows shrinks the menu
@@ -918,12 +895,12 @@ prefs, caches, TCC grants and login item, so this cannot disturb an installed co
 
 Debug answers `tinycast-dev://`; use that scheme for every link below.
 
-- ⇧⌘C on a command, window command, system action, quicklink and extension row says Deeplink
+- ⇧⌘C on a command, window command, system action, quicklink and plugin command row says Deeplink
   copied; ⌘K lists Copy Deeplink there, and not on an application or a System Settings pane. A
-  built-in row's link starts `tinycast-dev://`, and so does an extension row's
+  built-in row's link starts `tinycast-dev://`, and so does a plugin row's
 - Type into a quicklink's and a custom command's argument fields, then ⇧⌘C: the link carries the
   values, and opening it fills the same fields
-- Right-click a shortcut field in Settings (a command, a quicklink, an extension command): Copy
+- Right-click a shortcut field in Settings (a command, a quicklink, a plugin command): Copy
   Deeplink copies its link. Onboarding's and General's App Launcher field offer no menu
 - The note switcher's link button, and Copy Deeplink in the AI Chat sidebar and window menu, copy a
   link that reopens that note or chat; a renamed note's old link reports the missing file
@@ -965,26 +942,32 @@ Debug answers `tinycast-dev://`; use that scheme for every link below.
 - `settings/permissions` opens Settings on Permissions; `settings/nope` shows the HUD
 - A quicklink whose link is `tinycast-dev://window-command/left-half` moves the window without
   asking. One whose link is another quicklink's says it can't, and nothing loops
-- `raycast://extensions/<owner>/<ext>/<cmd>` and `tinycast-dev://extensions/<owner>/<ext>/<cmd>`
-  still run an installed extension command; `?context=` with a JSON object reaches it as
-  `props.launchContext`
+- `plugins/<plugin>/<cmd>` runs an installed plugin command; `?arguments=` fills its arguments,
+  `?context=` with a JSON object reaches it as `Plugin.launchContext`, and `?launchType=background`
+  runs an action without opening the palette. `extensions/<owner>/<ext>/<cmd>` reports the link
+- `raycast://` links don't reach Tinycast
 
-### Extensions
+### Plugins
 
-- Start GitHub sign-in, summon the waiting command and press Escape with an empty search field:
-  the browser session closes and root search works again. Repeat the sign-in, cancel in the browser,
-  then leave the command; closing and reopening the palette must respect Pop to Root Search again.
-- Open `raycast://extensions/linear/linear?source=webstore` from a browser: Settings → Extensions
-  offers the exact Store listing with Install (or Reinstall). Close it without installing, then open
-  a different Store link and verify its listing replaces the first. Repeat with extensions disabled:
-  Settings opens without looking up, installing or running anything; enabling still asks for consent.
-- Open a view-command deeplink with `fallbackText=beta`, with the palette hidden and already open:
-  the field shows `beta`; a locally filtered List/Grid shows matching rows, and a command using
-  `onSearchTextChange` receives the query when it mounts. Repeat without fallback text: the field
-  starts empty. A no-view command receives the prop without prefilling the search field.
-- Every command under Settings ▸ Extensions has Add Alias, and Record Hotkey when the mode is
-  supported; an alias set there finds the command from its start and shows the chip
-- Hiding the extension from the launcher, or turning off Show in launcher, dims its alias fields
+- Copy `Examples/Plugins/*` into the Plugins folder and turn plugins on: each command is in the
+  launcher with its icon and subtitle; Hacker News lists stories, its toolbar picker (⌘P) switches
+  feeds, typing searches, ↵ opens a story, ⌘↵ its comments, ⌘K lists every action, then the
+  toolbar's
+- Hacker News' Top Story shows in the menu bar; its menu opens the story, ⌥ shows the alternates,
+  and turning off Show in menu bar in Settings removes the item
+- Google Translate's form: typing translates, Tab walks the fields, ⌘↵ runs the toolbar's first
+  button; Escape leaves a pushed screen before it leaves the command
+- Edit a plugin's `main.swift` while its command is open: the screen comes back from the new code
+  about a second later; a compile error replaces it with the message, file and line
+- An action command with an interval runs in the background when Run in the background is on,
+  and Settings shows when it last ran
+- A command whose required preference is empty asks to open Settings at its plugin
+- Every command under Settings ▸ Plugins has an alias, a hotkey and Show in launcher; an alias
+  finds the command from its start; hiding it dims its alias field
+- Turn plugins off: the menu bar items go, the launcher drops the commands, hotkeys stop
+- Upgrading from a build with Raycast extensions installed: the `extensions` folders under
+  Application Support are gone after launch, their commands leave favorites, and settings.json no
+  longer reports `extensions`
 
 ### Settings and backup
 
@@ -1011,7 +994,7 @@ Debug answers `tinycast-dev://`; use that scheme for every link below.
 - Favorite a launcher item while a Settings deletion confirmation is open for a different favorite.
   Confirm the deletion and verify the new favorite survives.
 - Mirrored status updates live: File Search indexing, iCloud Sync, a dictation model download,
-  MCP server state, Hyper Key status and diagnostics, extension updates and install progress
+  MCP server state, Hyper Key status and diagnostics, a plugin's preferences and sign-in
 - A feature switch takes effect in the launcher immediately; every setting survives relaunch
 - Export produces a `.tinycast`; import applies it and reports a per-category summary, and the
   launcher shows the imported ranking, frequent emoji, calculator history, pins, notes and clips at once
@@ -1021,7 +1004,7 @@ Debug answers `tinycast-dev://`; use that scheme for every link below.
 - A file whose `manifest.json` `format` was hand-edited is refused **with a message naming it**
 - Cancelling the save panel leaves nothing in `~/Library/Caches/com.abueammar.tinycast.dev/backup-staging/`
 - **`snippetsEnabled` is not in the exported file**, and importing does not enable snippets
-- Nothing in the extracted tree names a Keychain item, an extension, or an AI conversation
+- Nothing in the extracted tree names a Keychain item, a plugin, or an AI conversation
 - Export only Quicklinks: the file holds `quicklinks.json` with their shortcuts, and importing it
   restores both without touching settings; every Not Included row shows its reason on hover
 
@@ -1037,8 +1020,7 @@ signed in to the same Apple ID is a second Mac on one machine.
 - Edit the same note on both while offline: the later edit wins; an open note with unsaved typing
   keeps it and uploads it
 - Delete a note on one Mac: it moves to the Trash on the other
-- Install a store extension on one Mac: it installs on the other only once Extensions is on there;
-  uninstalling removes it from both
+- A plugin on one Mac never appears on the other; a hotkey bound to its command does sync
 - A clashing hotkey keeps each Mac's own choice and is not bounced back
 - Unchecking a category stops it in both directions; checking it again merges rather than deletes
 - Remove the other Mac: it turns sync off there and says why

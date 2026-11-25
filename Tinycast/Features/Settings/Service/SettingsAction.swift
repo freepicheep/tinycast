@@ -37,10 +37,10 @@ enum SettingsAction: Codable, Sendable {
     case installedAILaunchChanged(InstalledAIKind)
     case discardUnsavedMCPServer(UUID)
     case setSettingsFile(SettingsFileChange)
-    case setExtensionAppearance(String, ExtensionAppearance?)
-    case setExtensionBackground(ExtensionCommandRef, Bool)
-    case setExtensionMenuBar(ExtensionCommandRef, Bool)
-    case setExtensionPreference(String, key: String, ExtensionPreferenceValue?)
+    case setPluginPreference(String, key: String, PluginValue?)
+    case setPluginBackground(PluginCommandRef, Bool)
+    case setPluginMenuBar(PluginCommandRef, Bool)
+    case signOutPlugin(String)
     case reloadPlugins
     case discardBackup(UUID)
     case checkForUpdates

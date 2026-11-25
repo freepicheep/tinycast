@@ -1,0 +1,52 @@
+{
+  "depth" : 2,
+  "generation" : 0,
+  "screen" : {
+    "kind" : "detail",
+    "value" : {
+      "chrome" : {
+        "actions" : [
+          {
+            "children" : [
+
+            ],
+            "handler" : 1,
+            "id" : "Visit",
+            "title" : "Visit"
+          },
+          {
+            "children" : [
+
+            ],
+            "handler" : 2,
+            "id" : "Back",
+            "title" : "Back"
+          }
+        ],
+        "isLoading" : false,
+        "pickers" : [
+
+        ]
+      },
+      "markdown" : "# Lima\nVisited 2 times",
+      "metadata" : [
+        {
+          "kind" : "label",
+          "text" : {
+            "content" : {
+              "kind" : "plain",
+              "text" : "Peru"
+            },
+            "isBold" : false,
+            "isMonospaced" : false
+          },
+          "title" : "Country"
+        }
+      ]
+    }
+  },
+  "version" : {
+    "major" : 1,
+    "minor" : 0
+  }
+}

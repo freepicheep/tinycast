@@ -3,7 +3,7 @@ import Foundation
 /// What the app is in the middle of. Every flag is injected, so the decision stays pure.
 struct UpdateActivity: Sendable {
     var isExpandingSnippet = false
-    var isRunningExtension = false
+    var isRunningPlugin = false
     var isUninstalling = false
     var isRecordingHotKey = false
     var isShowingDialog = false
@@ -14,7 +14,7 @@ struct UpdateActivity: Sendable {
 enum UpdateReadiness {
     enum Blocker: Equatable, Sendable {
         case expandingSnippet
-        case runningExtension
+        case runningPlugin
         case uninstalling
         case recordingHotKey
         case dialogOpen
@@ -24,7 +24,7 @@ enum UpdateReadiness {
     /// Ordered by consequence: an interrupted install loses work, an open panel does not.
     static func evaluate(_ activity: UpdateActivity) -> Blocker? {
         if activity.isExpandingSnippet { return .expandingSnippet }
-        if activity.isRunningExtension { return .runningExtension }
+        if activity.isRunningPlugin { return .runningPlugin }
         if activity.isUninstalling { return .uninstalling }
         if activity.isRecordingHotKey { return .recordingHotKey }
         if activity.isShowingDialog { return .dialogOpen }

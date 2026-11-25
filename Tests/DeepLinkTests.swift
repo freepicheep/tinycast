@@ -131,7 +131,7 @@ struct DeepLinkTests {
         let unnamed: [HotKeyAction] = [
             .togglePalette, .dictation, .app(bundleID: "com.apple.Safari"),
             .settingsPane(bundleID: "com.apple.Wallpaper-Settings.extension"),
-            .extensionCommand(entryID: "extension:demo/search"), .command(.quit)
+            .pluginCommand(entryID: "plugin:demo/search"), .command(.quit)
         ]
         for action in unnamed {
             expect(action.entryID == nil, "\(action.defaultsKey) has no entry ID, so no link")
@@ -157,13 +157,13 @@ struct DeepLinkTests {
             "a Debug build ignores Release's links")
         expect(
             parse("tinycast://extensions/demo/search") == nil,
-            "extension links fall through to their own router")
-        expect(
-            parse("tinycast://extensions/owner/demo/search?arguments=%7B%7D") == nil,
-            "an extension link with input still falls through")
+            "a retired extension link is no built-in")
         expect(
             parse("tinycast://plugins/hacker-news/stories") == nil,
-            "plugin links fall through to the extension router")
+            "plugin links fall through to the plugin router")
+        expect(
+            parse("tinycast://plugins/hacker-news/stories?arguments=%7B%7D") == nil,
+            "a plugin link with input still falls through")
         expect(resolve("tinycast://command") == nil, "a kind without an ID is not a command")
         expect(resolve("tinycast://command/") == nil, "an empty ID is not a command")
         expect(resolve("tinycast://command/nope") == nil, "an unknown command does not resolve")

@@ -1,22 +1,120 @@
-// The views a plugin's commands are built from, shaped like SwiftUI's and rendered into the
-// components Tinycast draws for Raycast extensions too.
+// The views a plugin's commands are built from, named and shaped as SwiftUI's. Each resolves to
+// parts, and the screen on top of the stack becomes the frame Tinycast draws (Frame.swift).
 
 import Foundation
 import _TinycastHost
 
-/// A piece of a command's screen. Write `body` the way SwiftUI does; Tinycast's own views are
-/// the primitives at the bottom of every `body`.
+/// A piece of a command's screen. Write `body` as in SwiftUI; Tinycast's views are the primitives
+/// at the bottom of every `body`.
 public protocol View {
     associatedtype Body: View
     @ViewBuilder var body: Body { get }
 }
 
-/// What a primitive renders into. Underscored: a plugin builds views, never these.
-public enum _Element {
-    /// A component inside a screen: a row, a section, a field.
-    case node(PluginNode)
-    /// A whole screen (`List`, `Grid`, `Detail`, `Form`, `MenuBarExtra`), with its `task`.
-    case screen(PluginNode, _Task?)
+/// A view Tinycast draws itself. Underscored: a plugin builds views, never parts.
+public protocol _PrimitiveView: View {
+    var _parts: [_Part] { get }
+}
+
+extension _PrimitiveView {
+    public var body: Self { return self }
+}
+
+func _resolve<V: View>(_ view: V) -> [_Part] {
+    if let primitive = view as? any _PrimitiveView { return primitive._parts }
+    return _resolve(view.body)
+}
+
+/// Parts a modifier changed, as a view.
+public struct _Parts: _PrimitiveView {
+    public let _parts: [_Part]
+}
+
+/// What a view resolves to: a row, a button, a field, a whole screen. A frame is made of these.
+public struct _Part {
+    enum Kind {
+        case row, text, section, button, menu, divider, field, picker, empty, screen, labeled, tagList, tag
+    }
+
+    var kind: Kind
+    var title = ""
+    /// A row's or a text's title as drawn, with its style.
+    var text: PluginText? = nil
+    var subtitle: PluginText? = nil
+    var icon: PluginImage? = nil
+    var content: PluginImage? = nil
+    /// `.id(_:)` or `ForEach`'s identity.
+    var id: String? = nil
+    /// `.tag(_:)`, or `ForEach`'s identity: what a picker or a selection sets.
+    var tag: AnyHashable? = nil
+    var children: [_Part] = []
+    var accessories: [PluginAccessory] = []
+    var keywords: [String] = []
+    var actions: [_Part] = []
+    var detail: _Screen? = nil
+    var isRedacted = false
+    var tooltip: String? = nil
+    var role: PluginActionRole? = nil
+    var shortcut: PluginShortcut? = nil
+    var effect: PluginEffect? = nil
+    var run: (() -> Void)? = nil
+    var alternate: [_Part] = []
+    var field: _Field? = nil
+    var picker: _Picker? = nil
+    var error: String? = nil
+    var focusedByDefault = false
+    var screen: _Screen? = nil
+    var color: PluginColor? = nil
+    var detailText: String? = nil
+
+    init(_ kind: Kind) {
+        self.kind = kind
+    }
+
+    /// A row's title as plain text, for search and for a picker's option.
+    var plainTitle: String {
+        if let text, case .plain(let plain) = text.content { return plain }
+        return title
+    }
+}
+
+/// One screen: a list, a grid, a detail, a form or a menu-bar item, with what's around its content.
+public final class _Screen {
+    enum Kind { case list, grid, detail, form, menuBar }
+
+    let kind: Kind
+    var content: [_Part]
+    var title: String? = nil
+    var search: Binding<String>? = nil
+    var searchPrompt: String? = nil
+    var toolbar: [_Part] = []
+    var overlay: [_Part] = []
+    var isLoading = false
+    var isRedacted = false
+    var showsDetail = false
+    var selection: (() -> AnyHashable?)? = nil
+    var select: ((AnyHashable?) -> Void)? = nil
+    var task: _Task? = nil
+    var refresh: (() async -> Void)? = nil
+    var columns = 5
+    var aspectRatio = 1.0
+    var fit = PluginImageFit.contain
+    var inset = PluginGridInset.none
+    var markdown = ""
+    var metadata: [_Part] = []
+    var icon: PluginImage? = nil
+    var tooltip: String? = nil
+
+    init(_ kind: Kind, content: [_Part]) {
+        self.kind = kind
+        self.content = content
+    }
+
+    var part: _Part {
+        var part = _Part(.screen)
+        part.screen = self
+        return part
+    }
 }
 
 /// A screen's `task`, and the id that restarts it when it changes.
@@ -25,64 +123,11 @@ public struct _Task {
     let run: () async -> Void
 }
 
-public protocol _PrimitiveView: View {
-    var _elements: [_Element] { get }
-}
-
-extension _PrimitiveView {
-    public var body: Self { return self }
-}
-
-func _resolve<V: View>(_ view: V) -> [_Element] {
-    if let primitive = view as? any _PrimitiveView { return primitive._elements }
-    return _resolve(view.body)
-}
-
-/// A view's components, a nested screen's included (a `Detail` in a row's detail pane).
-func _nodes<V: View>(_ view: V) -> [PluginNode] {
-    _resolve(view).map { element in
-        switch element {
-        case .node(let node): return node
-        case .screen(let node, _): return node
-        }
-    }
-}
-
-func _node(
-    _ type: String, key: String? = nil, _ props: [String: PluginValue] = [:], children: [PluginNode] = []
-) -> PluginNode {
-    PluginNode(type: type, key: key, props: props, children: children)
-}
-
-/// Rows and sections take their container's names: an `Item` in a `List` is a `List.Item`.
-func _retype(_ nodes: [PluginNode], container: String) -> [PluginNode] {
-    nodes.map { node in
-        var node = node
-        switch node.type {
-        case "Item":
-            node.type = container + ".Item"
-            if container == "Grid", node.props["content"] == nil, let icon = node.props["icon"] {
-                node.props["content"] = icon
-                node.props["icon"] = nil
-            }
-        case "Section":
-            node.type = container + ".Section"
-            node.children = _retype(node.children, container: container)
-        case "EmptyView":
-            node.type = container + ".EmptyView"
-        default:
-            break
-        }
-        return node
-    }
-}
-
-/// Views a builder collected, rendered when the screen renders: a view kept by a
-/// `NavigationLink` keeps its `@State` and shows each change.
+/// Views a builder collected, resolved when the screen renders.
 public struct _ViewGroup: _PrimitiveView {
-    let parts: [() -> [_Element]]
+    let parts: [() -> [_Part]]
 
-    public var _elements: [_Element] { parts.flatMap { $0() } }
+    public var _parts: [_Part] { parts.flatMap { $0() } }
 }
 
 @resultBuilder
@@ -105,620 +150,455 @@ public enum ViewBuilder {
 
 public struct EmptyView: _PrimitiveView {
     public init() {}
-    public var _elements: [_Element] { [] }
+    public var _parts: [_Part] { [] }
 }
 
-/// Views side by side in a builder, with no layout of their own.
+/// Views side by side, with no layout of their own.
 public struct Group: _PrimitiveView {
-    public let _elements: [_Element]
+    public let _parts: [_Part]
+
     public init<Content: View>(@ViewBuilder content: () -> Content) {
-        _elements = _resolve(content())
+        _parts = _resolve(content())
     }
 }
 
+/// A view for each element, identified as in SwiftUI: the identity keeps the selection on a row
+/// as the data changes, and tags the row for a picker or a selection.
 public struct ForEach: _PrimitiveView {
-    public let _elements: [_Element]
+    public let _parts: [_Part]
 
-    public init<Data: Sequence, Content: View>(
-        _ data: Data, @ViewBuilder content: (Data.Element) -> Content
-    ) {
-        var elements: [_Element] = []
-        for element in data { elements += _resolve(content(element)) }
-        _elements = elements
-    }
-
-    /// `id` keeps SwiftUI's spelling; give rows `.id(_:)` to keep the selection on one.
     public init<Data: Sequence, ID: Hashable, Content: View>(
         _ data: Data, id: KeyPath<Data.Element, ID>, @ViewBuilder content: (Data.Element) -> Content
     ) {
-        self.init(data, content: content)
+        var parts: [_Part] = []
+        for element in data {
+            let identity = element[keyPath: id]
+            for var part in _resolve(content(element)) {
+                if part.id == nil { part.id = "\(identity)" }
+                if part.tag == nil { part.tag = AnyHashable(identity) }
+                parts.append(part)
+            }
+        }
+        _parts = parts
+    }
+
+    public init<Data: Sequence, Content: View>(
+        _ data: Data, @ViewBuilder content: (Data.Element) -> Content
+    ) where Data.Element: Identifiable {
+        self.init(data, id: \.id, content: content)
+    }
+
+    public init<Content: View>(_ data: Range<Int>, @ViewBuilder content: (Int) -> Content) {
+        self.init(data, id: \.self, content: content)
     }
 }
 
-// MARK: - Images and colours
+// MARK: - Text, labels, images and colours
 
-/// A row's or an action's icon: an SF Symbol, an emoji, a web image or a file's own icon.
+/// Styled text: a row's title, a badge, a line in a form.
+public struct Text: _PrimitiveView, ExpressibleByStringLiteral {
+    public enum DateStyle {
+        case relative
+        case offset
+        case timer
+        case date
+        case time
+    }
+
+    var value: PluginText
+
+    public init(_ content: String) {
+        value = PluginText(content: .plain(content), color: nil, isBold: false, isMonospaced: false)
+    }
+
+    public init(stringLiteral content: String) {
+        self.init(content)
+    }
+
+    /// A date the host draws in the user's locale, and keeps current: "3 hours ago", "in 5 min".
+    public init(_ date: Date, style: DateStyle) {
+        let wire: PluginDateStyle
+        switch style {
+        case .relative: wire = .relative
+        case .offset: wire = .offset
+        case .timer: wire = .timer
+        case .date: wire = .date
+        case .time: wire = .time
+        }
+        value = PluginText(
+            content: .date(date.timeIntervalSince1970, style: wire), color: nil, isBold: false, isMonospaced: false)
+    }
+
+    public func bold(_ isActive: Bool = true) -> Text {
+        var copy = self
+        copy.value.isBold = isActive
+        return copy
+    }
+
+    public func monospaced(_ isActive: Bool = true) -> Text {
+        var copy = self
+        copy.value.isMonospaced = isActive
+        return copy
+    }
+
+    public func foregroundStyle(_ color: Color) -> Text {
+        var copy = self
+        copy.value.color = color.value
+        return copy
+    }
+
+    var plain: String {
+        if case .plain(let text) = value.content { return text }
+        return ""
+    }
+
+    public var _parts: [_Part] {
+        var part = _Part(.text)
+        part.title = plain
+        part.text = value
+        return [part]
+    }
+}
+
+/// A title with an icon: a row of a list, a tile of a grid, an option of a picker.
+public struct Label: _PrimitiveView {
+    let title: Text
+    let icon: Image?
+
+    public init(_ title: String, systemImage: String) {
+        self.title = Text(title)
+        icon = Image(systemName: systemImage)
+    }
+
+    public init(_ title: String, image: Image) {
+        self.title = Text(title)
+        icon = image
+    }
+
+    public init(_ title: Text, image: Image? = nil) {
+        self.title = title
+        icon = image
+    }
+
+    public var _parts: [_Part] {
+        var part = _Part(.row)
+        part.title = title.plain
+        part.text = title.value
+        part.icon = icon?.value
+        return [part]
+    }
+}
+
+public struct Circle {
+    public init() {}
+}
+
+public struct RoundedRectangle {
+    public init(cornerRadius: Double = 4) {}
+}
+
+/// An icon: an SF Symbol, an image in the plugin's folder, a web image, a file's own icon.
 public struct Image {
-    var value: PluginValue
+    var value: PluginImage
 
     public init(systemName: String) {
-        value = .object(["source": .object(["systemImage": .string(systemName)])])
+        value = .symbol(systemName, color: nil)
+    }
+
+    /// A file in the plugin's own folder, by its name there.
+    public init(_ name: String) {
+        value = .asset(name)
+    }
+
+    /// An `https` image, fetched and cached by Tinycast.
+    public init(url: URL) {
+        value = .remote(url.absoluteString, mask: nil)
+    }
+
+    public init(contentsOfFile path: String) {
+        value = .file(path)
+    }
+
+    /// The icon Finder shows for the file, folder or app at `path`.
+    public init(fileIconFor path: String) {
+        value = .fileIcon(path)
     }
 
     /// A short string drawn as the icon, usually one emoji.
     public init(emoji: String) {
-        value = .string(emoji)
+        value = .emoji(emoji)
     }
 
-    /// An `https` image, fetched and cached by Tinycast.
-    public init(url: String) {
-        value = .object(["source": .string(url)])
+    /// A swatch of `color`: a grid tile that is a colour.
+    public init(color: Color) {
+        value = .color(color.value)
     }
 
-    /// The icon Finder shows for the file, folder or app at `path`.
-    public init(fileIcon path: String) {
-        value = .object(["source": .object(["fileIcon": .string(path)])])
-    }
-
-    public func tint(_ color: Color) -> Image {
+    /// Tints an SF Symbol.
+    public func foregroundStyle(_ color: Color) -> Image {
+        guard case .symbol(let name, _) = value else { return self }
         var copy = self
-        if case .object(var fields) = value {
-            fields["tintColor"] = .string(color.name)
-            copy.value = .object(fields)
-        } else {
-            copy.value = .object(["source": value, "tintColor": .string(color.name)])
-        }
+        copy.value = .symbol(name, color: color.value)
         return copy
     }
 
-    /// Drawn in a circle, like an avatar.
-    public func clipCircle() -> Image {
+    /// A web image drawn in a circle, like an avatar.
+    public func clipShape(_ shape: Circle) -> Image { masked(.circle) }
+    public func clipShape(_ shape: RoundedRectangle) -> Image { masked(.roundedRectangle) }
+
+    func masked(_ mask: PluginImageMask) -> Image {
+        guard case .remote(let url, _) = value else { return self }
         var copy = self
-        if case .object(var fields) = value {
-            fields["mask"] = .string("circle")
-            copy.value = .object(fields)
-        }
+        copy.value = .remote(url, mask: mask)
         return copy
     }
 }
 
-/// A named colour, or any CSS colour.
+/// SwiftUI's named colours, which follow the appearance, or one of your own.
 public struct Color {
-    let name: String
+    var value: PluginColor
 
-    public init(css: String) { name = css }
-    init(name: String) { self.name = name }
+    init(_ value: PluginColor) {
+        self.value = value
+    }
 
-    public static let gray = Color(name: "gray")
-    public static let blue = Color(name: "raycast-blue")
-    public static let cyan = Color(name: "cyan")
-    public static let mint = Color(name: "mediumaquamarine")
-    public static let green = Color(name: "raycast-green")
-    public static let yellow = Color(name: "raycast-yellow")
-    public static let orange = Color(name: "raycast-orange")
-    public static let red = Color(name: "raycast-red")
-    public static let pink = Color(name: "raycast-magenta")
-    public static let purple = Color(name: "raycast-purple")
-    public static let indigo = Color(name: "indigo")
-    public static let brown = Color(name: "brown")
-    public static let primary = Color(name: "raycast-primary-text")
-    public static let secondary = Color(name: "raycast-secondary-text")
+    public init(red: Double, green: Double, blue: Double, opacity: Double = 1) {
+        value = .rgba(red, green, blue, opacity)
+    }
+
+    public func opacity(_ opacity: Double) -> Color {
+        guard case .rgba(let red, let green, let blue, _) = value else { return self }
+        return Color(red: red, green: green, blue: blue, opacity: opacity)
+    }
+
+    public static let primary = Color(.semantic(.primary))
+    public static let secondary = Color(.semantic(.secondary))
+    public static let accentColor = Color(.semantic(.accent))
+    public static let red = Color(.semantic(.red))
+    public static let orange = Color(.semantic(.orange))
+    public static let yellow = Color(.semantic(.yellow))
+    public static let green = Color(.semantic(.green))
+    public static let mint = Color(.semantic(.mint))
+    public static let teal = Color(.semantic(.teal))
+    public static let cyan = Color(.semantic(.cyan))
+    public static let blue = Color(.semantic(.blue))
+    public static let indigo = Color(.semantic(.indigo))
+    public static let purple = Color(.semantic(.purple))
+    public static let pink = Color(.semantic(.pink))
+    public static let brown = Color(.semantic(.brown))
+    public static let gray = Color(.semantic(.gray))
 }
 
-// MARK: - Lists
+// MARK: - Lists and grids
 
-/// The searchable list of rows most commands show.
+/// The searchable list of rows most commands show. Without `.searchable(text:)` Tinycast filters
+/// the rows by title, subtitle and `.searchKeywords`.
 public struct List: _PrimitiveView {
-    var props: [String: PluginValue] = [:]
-    let rows: [PluginNode]
-    var task: _Task?
+    let screen: _Screen
 
     public init<Content: View>(@ViewBuilder content: () -> Content) {
-        rows = _nodes(content())
+        screen = _Screen(.list, content: _resolve(content()))
+    }
+
+    /// The selected row's tag (`ForEach`'s identity, or `.tag(_:)`), kept in step both ways.
+    public init<SelectionValue: Hashable, Content: View>(
+        selection: Binding<SelectionValue?>, @ViewBuilder content: () -> Content
+    ) {
+        screen = _Screen(.list, content: _resolve(content()))
+        screen.selection = { selection.wrappedValue.map { AnyHashable($0) } }
+        screen.select = { value in selection.wrappedValue = value?.base as? SelectionValue }
     }
 
     public init<Data: Sequence, Row: View>(
         _ data: Data, @ViewBuilder rowContent: (Data.Element) -> Row
+    ) where Data.Element: Identifiable {
+        screen = _Screen(.list, content: ForEach(data, id: \.id, content: rowContent)._parts)
+    }
+
+    public init<Data: Sequence, ID: Hashable, Row: View>(
+        _ data: Data, id: KeyPath<Data.Element, ID>, @ViewBuilder rowContent: (Data.Element) -> Row
     ) {
-        self.init { ForEach(data, content: rowContent) }
+        screen = _Screen(.list, content: ForEach(data, id: id, content: rowContent)._parts)
     }
 
-    public var _elements: [_Element] {
-        var props = props
-        if props["filtering"] == nil { props["filtering"] = .bool(props["onSearchTextChange"] == nil) }
-        return [.screen(_node("List", props, children: _retype(rows, container: "List")), task)]
-    }
-
-    public func navigationTitle(_ title: String) -> List { with("navigationTitle", .string(title)) }
-
-    /// The plugin filters its own rows from `text`; without this, Tinycast filters them.
-    public func searchable(text: Binding<String>, prompt: String? = nil) -> List {
-        var copy = with("searchText", .string(text.wrappedValue))
-        copy.props["onSearchTextChange"] = _handler { text.wrappedValue = $0.first?.text ?? "" }
-        if let prompt { copy.props["searchBarPlaceholder"] = .string(prompt) }
-        return copy
-    }
-
-    /// The search field's placeholder, with Tinycast still filtering the rows.
-    public func searchable(prompt: String) -> List { with("searchBarPlaceholder", .string(prompt)) }
-
-    public func loading(_ isLoading: Bool) -> List { with("isLoading", .bool(isLoading)) }
-
-    /// Rows on the left and the selected row's `detail` beside them.
-    public func showingDetail(_ isShowing: Bool = true) -> List { with("isShowingDetail", .bool(isShowing)) }
-
-    /// The selected row's id, kept in step both ways.
-    public func selection(_ id: Binding<String?>) -> List {
-        var copy = self
-        if let current = id.wrappedValue { copy.props["selectedItemId"] = .string(current) }
-        copy.props["onSelectionChange"] = _handler { id.wrappedValue = $0.first?.text }
-        return copy
-    }
-
-    /// A dropdown beside the search field, such as a category filter.
-    public func searchBarAccessory(_ dropdown: Dropdown) -> List {
-        with("searchBarAccessory", .node(dropdown.node(container: "List")))
-    }
-
-    /// The actions an empty list offers.
-    public func actions(@ActionBuilder _ content: () -> [PluginNode]) -> List {
-        with("actions", .node(_actionPanel(content())))
-    }
-
-    /// Runs once when the list first appears, and is cancelled when it leaves the stack.
-    public func task(_ action: @escaping () async -> Void) -> List {
-        var copy = self
-        copy.task = _Task(key: "", run: action)
-        return copy
-    }
-
-    /// Like `task(_:)`, and cancelled and started again whenever `id` changes.
-    public func task<ID: Equatable>(id: ID, _ action: @escaping () async -> Void) -> List {
-        var copy = self
-        copy.task = _Task(key: "\(id)", run: action)
-        return copy
-    }
-
-    func with(_ name: String, _ value: PluginValue) -> List {
-        var copy = self
-        copy.props[name] = value
-        return copy
-    }
+    public var _parts: [_Part] { [screen.part] }
 }
 
-/// A grid of tiles: images, colours or symbols, each with a title.
+/// Tiles of images, colours or symbols, each with a title.
 public struct Grid: _PrimitiveView {
-    public enum Fit { case contain, fill }
-    public enum Inset { case zero, small, medium, large }
+    public enum Inset {
+        case zero
+        case small
+        case medium
+        case large
+    }
 
-    var props: [String: PluginValue] = [:]
-    let tiles: [PluginNode]
-    var task: _Task?
+    public enum ContentMode {
+        case fit
+        case fill
+    }
 
-    /// - Parameters:
-    ///   - aspectRatio: A tile's width to its height: `"1"`, `"3/2"`, `"2/3"`, `"4/3"`, `"3/4"`,
-    ///     `"16/9"` or `"9/16"`.
+    let screen: _Screen
+
+    /// `aspectRatio` is a tile's width over its height: `1.5` for 3:2.
     public init<Content: View>(
-        columns: Int = 5, aspectRatio: String = "1", fit: Fit = .contain, inset: Inset? = nil,
+        columns: Int = 5, aspectRatio: Double = 1, contentMode: ContentMode = .fit, inset: Inset = .zero,
         @ViewBuilder content: () -> Content
     ) {
-        tiles = _nodes(content())
-        props["columns"] = .number(Double(columns))
-        props["aspectRatio"] = .string(aspectRatio)
-        props["fit"] = .string(fit == .fill ? "fill" : "contain")
-        if let inset {
-            switch inset {
-            case .zero: props["inset"] = .string("zero")
-            case .small: props["inset"] = .string("small")
-            case .medium: props["inset"] = .string("medium")
-            case .large: props["inset"] = .string("large")
-            }
+        screen = _Screen(.grid, content: _resolve(content()))
+        screen.columns = columns
+        screen.aspectRatio = aspectRatio
+        screen.fit = contentMode == .fill ? .fill : .contain
+        switch inset {
+        case .zero: screen.inset = .none
+        case .small: screen.inset = .small
+        case .medium: screen.inset = .medium
+        case .large: screen.inset = .large
         }
     }
 
-    public var _elements: [_Element] {
-        var props = props
-        if props["filtering"] == nil { props["filtering"] = .bool(props["onSearchTextChange"] == nil) }
-        return [.screen(_node("Grid", props, children: _retype(tiles, container: "Grid")), task)]
-    }
-
-    public func navigationTitle(_ title: String) -> Grid { with("navigationTitle", .string(title)) }
-
-    public func searchable(text: Binding<String>, prompt: String? = nil) -> Grid {
-        var copy = with("searchText", .string(text.wrappedValue))
-        copy.props["onSearchTextChange"] = _handler { text.wrappedValue = $0.first?.text ?? "" }
-        if let prompt { copy.props["searchBarPlaceholder"] = .string(prompt) }
-        return copy
-    }
-
-    public func searchable(prompt: String) -> Grid { with("searchBarPlaceholder", .string(prompt)) }
-    public func loading(_ isLoading: Bool) -> Grid { with("isLoading", .bool(isLoading)) }
-
-    public func selection(_ id: Binding<String?>) -> Grid {
-        var copy = self
-        if let current = id.wrappedValue { copy.props["selectedItemId"] = .string(current) }
-        copy.props["onSelectionChange"] = _handler { id.wrappedValue = $0.first?.text }
-        return copy
-    }
-
-    public func searchBarAccessory(_ dropdown: Dropdown) -> Grid {
-        with("searchBarAccessory", .node(dropdown.node(container: "Grid")))
-    }
-
-    public func actions(@ActionBuilder _ content: () -> [PluginNode]) -> Grid {
-        with("actions", .node(_actionPanel(content())))
-    }
-
-    public func task(_ action: @escaping () async -> Void) -> Grid {
-        var copy = self
-        copy.task = _Task(key: "", run: action)
-        return copy
-    }
-
-    public func task<ID: Equatable>(id: ID, _ action: @escaping () async -> Void) -> Grid {
-        var copy = self
-        copy.task = _Task(key: "\(id)", run: action)
-        return copy
-    }
-
-    func with(_ name: String, _ value: PluginValue) -> Grid {
-        var copy = self
-        copy.props[name] = value
-        return copy
-    }
+    public var _parts: [_Part] { [screen.part] }
 }
 
-/// Rows under a heading, in a `List` or a `Grid`.
+/// Rows under a heading, in a list, a grid, a picker, a form or a menu.
 public struct Section: _PrimitiveView {
-    let node: PluginNode
+    let title: String?
+    let subtitle: String?
+    let content: [_Part]
 
     public init<Content: View>(
         _ title: String? = nil, subtitle: String? = nil, @ViewBuilder content: () -> Content
     ) {
-        var props: [String: PluginValue] = [:]
-        if let title { props["title"] = .string(title) }
-        if let subtitle { props["subtitle"] = .string(subtitle) }
-        node = _node("Section", key: title, props, children: _nodes(content()))
+        self.title = title
+        self.subtitle = subtitle
+        self.content = _resolve(content())
     }
 
-    public var _elements: [_Element] { [.node(node)] }
-}
-
-/// One row of a `List`, or one tile of a `Grid`: a title, and what it shows and does around it.
-public struct Item: _PrimitiveView {
-    var props: [String: PluginValue]
-    var key: String?
-    var accessories: [PluginValue] = []
-
-    public init(_ title: String, subtitle: String? = nil, systemImage: String? = nil) {
-        props = ["title": .string(title)]
-        if let subtitle { props["subtitle"] = .string(subtitle) }
-        if let systemImage { props["icon"] = Image(systemName: systemImage).value }
-    }
-
-    /// A row whose icon is a short string, usually one emoji.
-    public init(_ title: String, subtitle: String? = nil, emoji: String) {
-        self.init(title, subtitle: subtitle, image: Image(emoji: emoji))
-    }
-
-    public init(_ title: String, subtitle: String? = nil, image: Image) {
-        self.init(title, subtitle: subtitle)
-        props["icon"] = image.value
-    }
-
-    /// A grid tile that is a swatch of `color`.
-    public init(_ title: String, subtitle: String? = nil, color: Color) {
-        self.init(title, subtitle: subtitle)
-        props["content"] = .object(["color": .string(color.name)])
-    }
-
-    public var _elements: [_Element] {
-        var props = props
-        if !accessories.isEmpty { props["accessories"] = .array(accessories) }
-        return [.node(_node("Item", key: key, props))]
-    }
-
-    /// Keeps the selection on this row while its title changes, and is what `selection` reports.
-    public func id(_ id: String) -> Item {
-        var copy = with("id", .string(id))
-        copy.key = id
-        return copy
-    }
-
-    /// Trailing text, like SwiftUI's list badges.
-    public func badge(_ text: String) -> Item { accessory(text) }
-    public func badge(_ count: Int) -> Item { accessory(String(count)) }
-
-    /// Trailing text, an icon, or both, with a tooltip.
-    public func accessory(_ text: String? = nil, image: Image? = nil, tooltip: String? = nil) -> Item {
-        var fields: [String: PluginValue] = [:]
-        if let text { fields["text"] = .string(text) }
-        if let image { fields["icon"] = image.value }
-        if let tooltip { fields["tooltip"] = .string(tooltip) }
-        var copy = self
-        copy.accessories.append(.object(fields))
-        return copy
-    }
-
-    /// A date, drawn relative to now: "3h", "yesterday".
-    public func accessory(date: Date, tooltip: String? = nil) -> Item {
-        var fields: [String: PluginValue] = ["date": .date(date.timeIntervalSince1970)]
-        if let tooltip { fields["tooltip"] = .string(tooltip) }
-        var copy = self
-        copy.accessories.append(.object(fields))
-        return copy
-    }
-
-    /// A coloured tag.
-    public func tag(_ text: String, color: Color? = nil) -> Item {
-        var tag: [String: PluginValue] = ["value": .string(text)]
-        if let color { tag["color"] = .string(color.name) }
-        var copy = self
-        copy.accessories.append(.object(["tag": .object(tag)]))
-        return copy
-    }
-
-    /// Extra words Tinycast's search matches the row by.
-    public func keywords(_ words: [String]) -> Item {
-        var existing: [PluginValue] = []
-        if case .array(let values) = props["keywords"] { existing = values }
-        return with("keywords", .array(existing + words.map { PluginValue.string($0) }))
-    }
-
-    /// Tints the row's symbol.
-    public func tint(_ color: Color) -> Item {
-        guard case .object(var fields) = props["icon"] else { return self }
-        fields["tintColor"] = .string(color.name)
-        return with("icon", .object(fields))
-    }
-
-    /// A grid tile's picture, in place of its icon.
-    public func content(_ image: Image) -> Item { with("content", image.value) }
-
-    /// The first action runs on ↵, the second on ⌘↵; all of them are in the ⌘K menu.
-    public func actions(@ActionBuilder _ content: () -> [PluginNode]) -> Item {
-        with("actions", .node(_actionPanel(content())))
-    }
-
-    /// Shown beside the list while this row is selected, in a list that is `showingDetail`.
-    public func detail(_ content: () -> Detail) -> Item {
-        var node = content().node
-        node.type = "List.Item.Detail"
-        return with("detail", .node(node))
-    }
-
-    func with(_ name: String, _ value: PluginValue) -> Item {
-        var copy = self
-        copy.props[name] = value
-        return copy
+    public var _parts: [_Part] {
+        var part = _Part(.section)
+        part.title = title ?? ""
+        part.subtitle = subtitle.map { Text($0).value }
+        part.id = title
+        part.children = content
+        return [part]
     }
 }
 
 /// What an empty list or grid shows instead of rows.
 public struct ContentUnavailableView: _PrimitiveView {
-    let props: [String: PluginValue]
+    let title: String
+    let icon: PluginImage?
+    let description: String?
 
-    public init(_ title: String, systemImage: String? = nil, description: String? = nil) {
-        var props: [String: PluginValue] = ["title": .string(title)]
-        if let systemImage { props["icon"] = Image(systemName: systemImage).value }
-        if let description { props["description"] = .string(description) }
-        self.props = props
+    public init(_ title: String, systemImage: String? = nil, description: Text? = nil) {
+        self.title = title
+        icon = systemImage.map { PluginImage.symbol($0, color: nil) }
+        self.description = description?.plain
     }
 
-    /// The standard “No results” for a search that matched nothing.
+    /// The standard "No Results".
+    public static var search: ContentUnavailableView {
+        ContentUnavailableView("No Results", systemImage: "magnifyingglass")
+    }
+
+    /// "No Results for “text”".
     public static func search(text: String) -> ContentUnavailableView {
         ContentUnavailableView(
-            text.isEmpty ? "No Results" : "No Results for “\(text)”", systemImage: "magnifyingglass")
+            text.isEmpty ? "No Results" : "No Results for “\(text)”", systemImage: "magnifyingglass",
+            description: "Check the spelling or try a new search.")
     }
 
-    public var _elements: [_Element] { [.node(_node("EmptyView", props))] }
-}
-
-/// The dropdown beside a list's or grid's search field. Keep `selection` in `@AppStorage` to
-/// remember the choice between launches.
-public struct Dropdown {
-    let tooltip: String
-    let selection: Binding<String>
-    let items: [PluginNode]
-
-    public init(_ tooltip: String, selection: Binding<String>, @DropdownBuilder items: () -> [PluginNode]) {
-        self.tooltip = tooltip
-        self.selection = selection
-        self.items = items()
+    public var _parts: [_Part] {
+        var part = _Part(.empty)
+        part.title = title
+        part.icon = icon
+        part.detailText = description
+        return [part]
     }
-
-    func node(container: String) -> PluginNode {
-        let binding = selection
-        let retyped = items.map { item -> PluginNode in
-            var item = item
-            item.type = container + ".Dropdown." + item.type
-            item.children = item.children.map { child in
-                var child = child
-                child.type = container + ".Dropdown." + child.type
-                return child
-            }
-            return item
-        }
-        return _node(
-            container + ".Dropdown", key: tooltip,
-            [
-                "tooltip": .string(tooltip), "value": .string(binding.wrappedValue),
-                "onChange": _handler { binding.wrappedValue = $0.first?.text ?? "" }
-            ], children: retyped)
-    }
-}
-
-/// One choice of a `Dropdown`, a `Picker` or a `TagPicker`.
-public struct Choice {
-    let node: PluginNode
-
-    public init(_ title: String, value: String, systemImage: String? = nil) {
-        var props: [String: PluginValue] = ["title": .string(title), "value": .string(value)]
-        if let systemImage { props["icon"] = Image(systemName: systemImage).value }
-        node = _node("Item", key: value, props)
-    }
-}
-
-/// Choices under a heading.
-public struct ChoiceSection {
-    let node: PluginNode
-
-    public init(_ title: String? = nil, @DropdownBuilder _ choices: () -> [PluginNode]) {
-        var props: [String: PluginValue] = [:]
-        if let title { props["title"] = .string(title) }
-        node = _node("Section", key: title, props, children: choices())
-    }
-}
-
-@resultBuilder
-public enum DropdownBuilder {
-    public static func buildExpression(_ choice: Choice) -> [PluginNode] { [choice.node] }
-    public static func buildExpression(_ section: ChoiceSection) -> [PluginNode] { [section.node] }
-    public static func buildBlock(_ parts: [PluginNode]...) -> [PluginNode] { parts.flatMap { $0 } }
-    public static func buildOptional(_ part: [PluginNode]?) -> [PluginNode] { part ?? [] }
-    public static func buildEither(first part: [PluginNode]) -> [PluginNode] { part }
-    public static func buildEither(second part: [PluginNode]) -> [PluginNode] { part }
-    public static func buildArray(_ parts: [[PluginNode]]) -> [PluginNode] { parts.flatMap { $0 } }
 }
 
 // MARK: - Detail
 
-/// A page of Markdown, or the pane beside a list.
+/// A page of Markdown, or the pane beside a list's selected row.
 public struct Detail: _PrimitiveView {
-    var node: PluginNode
-    var task: _Task?
+    let screen: _Screen
 
     public init(markdown: String) {
-        node = _node("Detail", ["markdown": .string(markdown)])
+        screen = _Screen(.detail, content: [])
+        screen.markdown = markdown
     }
-
-    public var _elements: [_Element] { [.screen(node, task)] }
-
-    public func navigationTitle(_ title: String) -> Detail { with("navigationTitle", .string(title)) }
 
     /// Labels, links and tags beside the text: a sidebar on a screen, below it in a list's pane.
-    public func metadata(@MetadataBuilder _ content: () -> [PluginNode]) -> Detail {
-        with("metadata", .node(_node("Detail.Metadata", children: content())))
+    public func metadata<Content: View>(@ViewBuilder _ content: () -> Content) -> Detail {
+        screen.metadata = _resolve(content())
+        return self
     }
 
-    public func actions(@ActionBuilder _ content: () -> [PluginNode]) -> Detail {
-        with("actions", .node(_actionPanel(content())))
+    public var _parts: [_Part] { [screen.part] }
+}
+
+/// A label and its value: a line of a detail's metadata or of a form. Its content may be a
+/// `Link`, which opens the destination.
+public struct LabeledContent: _PrimitiveView {
+    let label: String
+    let value: [_Part]
+
+    public init(_ label: String, value: String) {
+        self.label = label
+        self.value = Text(value)._parts
     }
 
-    public func loading(_ isLoading: Bool) -> Detail { with("isLoading", .bool(isLoading)) }
-
-    public func task(_ action: @escaping () async -> Void) -> Detail {
-        var copy = self
-        copy.task = _Task(key: "", run: action)
-        return copy
+    public init<Content: View>(_ label: String, @ViewBuilder content: () -> Content) {
+        self.label = label
+        value = _resolve(content())
     }
 
-    public func task<ID: Equatable>(id: ID, _ action: @escaping () async -> Void) -> Detail {
-        var copy = self
-        copy.task = _Task(key: "\(id)", run: action)
-        return copy
-    }
-
-    func with(_ name: String, _ value: PluginValue) -> Detail {
-        var copy = self
-        copy.node.props[name] = value
-        return copy
+    public var _parts: [_Part] {
+        var part = _Part(.labeled)
+        part.title = label
+        part.children = value
+        return [part]
     }
 }
 
-/// A label and its value in a `Detail`'s metadata.
-public struct LabeledContent {
-    let node: PluginNode
+/// Coloured tags under a label in a detail's metadata.
+public struct TagList: _PrimitiveView {
+    let label: String
+    let tags: [_Part]
 
-    public init(_ label: String, value: String, systemImage: String? = nil) {
-        var props: [String: PluginValue] = ["title": .string(label), "text": .string(value)]
-        if let systemImage { props["icon"] = Image(systemName: systemImage).value }
-        node = _node("Detail.Metadata.Label", key: label, props)
+    public init<Content: View>(_ label: String, @ViewBuilder tags: () -> Content) {
+        self.label = label
+        self.tags = _resolve(tags())
     }
 
-    public init(_ label: String, value: String, image: Image) {
-        node = _node(
-            "Detail.Metadata.Label", key: label,
-            ["title": .string(label), "text": .string(value), "icon": image.value])
-    }
-}
-
-/// A link in a `Detail`'s metadata: `text` opens `destination`.
-public struct MetadataLink {
-    let node: PluginNode
-
-    public init(_ label: String, text: String, destination: String) {
-        node = _node(
-            "Detail.Metadata.Link", key: label,
-            ["title": .string(label), "text": .string(text), "target": .string(destination)])
+    public var _parts: [_Part] {
+        var part = _Part(.tagList)
+        part.title = label
+        part.children = tags
+        return [part]
     }
 }
 
-/// Coloured tags under a label in a `Detail`'s metadata.
-public struct TagList {
-    let node: PluginNode
-
-    public init(_ label: String, @TagBuilder tags: () -> [PluginNode]) {
-        node = _node("Detail.Metadata.TagList", key: label, ["title": .string(label)], children: tags())
-    }
-}
-
-public struct Tag {
-    let node: PluginNode
+/// A coloured tag: in a `TagList`, or a row's `.badge`.
+public struct Tag: _PrimitiveView {
+    let text: String
+    let color: Color?
 
     public init(_ text: String, color: Color? = nil) {
-        var props: [String: PluginValue] = ["text": .string(text)]
-        if let color { props["color"] = .string(color.name) }
-        node = _node("Detail.Metadata.TagList.Item", key: text, props)
+        self.text = text
+        self.color = color
+    }
+
+    public var _parts: [_Part] {
+        var part = _Part(.tag)
+        part.title = text
+        part.color = color?.value
+        return [part]
     }
 }
 
-/// A line between rows of metadata, fields of a form or items of a menu.
+/// A line between rows of metadata, fields of a form, items of a menu, groups of actions.
 public struct Divider: _PrimitiveView {
     public init() {}
-    public var _elements: [_Element] { [.node(_node("Separator"))] }
-}
-
-@resultBuilder
-public enum MetadataBuilder {
-    public static func buildExpression(_ entry: LabeledContent) -> [PluginNode] { [entry.node] }
-    public static func buildExpression(_ entry: MetadataLink) -> [PluginNode] { [entry.node] }
-    public static func buildExpression(_ entry: TagList) -> [PluginNode] { [entry.node] }
-    public static func buildExpression(_ entry: Divider) -> [PluginNode] {
-        [_node("Detail.Metadata.Separator")]
-    }
-    public static func buildBlock(_ parts: [PluginNode]...) -> [PluginNode] { parts.flatMap { $0 } }
-    public static func buildOptional(_ part: [PluginNode]?) -> [PluginNode] { part ?? [] }
-    public static func buildEither(first part: [PluginNode]) -> [PluginNode] { part }
-    public static func buildEither(second part: [PluginNode]) -> [PluginNode] { part }
-    public static func buildArray(_ parts: [[PluginNode]]) -> [PluginNode] { parts.flatMap { $0 } }
-}
-
-@resultBuilder
-public enum TagBuilder {
-    public static func buildExpression(_ tag: Tag) -> [PluginNode] { [tag.node] }
-    public static func buildBlock(_ parts: [PluginNode]...) -> [PluginNode] { parts.flatMap { $0 } }
-    public static func buildOptional(_ part: [PluginNode]?) -> [PluginNode] { part ?? [] }
-    public static func buildEither(first part: [PluginNode]) -> [PluginNode] { part }
-    public static func buildEither(second part: [PluginNode]) -> [PluginNode] { part }
-    public static func buildArray(_ parts: [[PluginNode]]) -> [PluginNode] { parts.flatMap { $0 } }
-}
-
-// MARK: - Handlers
-
-/// A closure as a handler prop: the palette calls it with its arguments.
-func _handler(_ body: @escaping ([PluginValue]) -> Void) -> PluginValue {
-    .handler { arguments in body(arguments) }
-}
-
-extension PluginValue {
-    /// A handler's argument as text; a number or a flag prints as itself.
-    var text: String? {
-        switch self {
-        case .string(let value): return value
-        case .number(let value): return value == value.rounded() ? String(Int(value)) : String(value)
-        case .bool(let value): return value ? "true" : "false"
-        default: return nil
-        }
-    }
+    public var _parts: [_Part] { [_Part(.divider)] }
 }

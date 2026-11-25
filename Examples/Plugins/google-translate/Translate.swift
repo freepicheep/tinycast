@@ -40,79 +40,68 @@ struct Translate: View {
             }
         }
         .searchable(text: $text, prompt: "Enter text to translate")
-        .showingDetail(showingDetail)
-        .searchBarAccessory(
-            Dropdown("Language Set", selection: $selectedStored) {
-                for choice in allSets {
-                    Choice(choice.title, value: choice.stored)
+        .showsDetail(showingDetail)
+        .toolbar {
+            Picker("Language Set", selection: $selectedStored) {
+                ForEach(allSets, id: \.stored) { choice in
+                    Text(choice.title).tag(choice.stored)
                 }
-            })
-        .actions { setActions }
+            }
+            setActions
+        }
         .task(id: text + "\n" + set.stored) { await load(set) }
     }
 
     @ViewBuilder
     private func rows(_ result: Translation, index: Int) -> some View {
         let pair = languageName(result.langFrom) + " -> " + languageName(result.langTo)
-        Item(result.translatedText)
+        Text(result.translatedText)
             .id("\(index)")
-            .accessory(pair, tooltip: pair)
+            .badge(pair)
             .detail { Detail(markdown: result.translatedText) }
-            .actions {
-                ActionSection {
-                    if pastesFirst() {
-                        PasteButton("Paste Translation", text: result.translatedText)
-                        CopyButton("Copy Translation", text: result.translatedText).keyboardShortcut("c", modifiers: [.command, .shift])
-                    } else {
-                        CopyButton("Copy Translation", text: result.translatedText).keyboardShortcut("c", modifiers: [.command, .shift])
-                        PasteButton("Paste Translation", text: result.translatedText)
-                    }
-                    toggleDetail
-                    Link(
-                        "Open in Google Translate",
-                        destination: googleTranslateURL(text, from: result.langFrom, to: result.langTo)
-                    )
-                    .keyboardShortcut("return", modifiers: [.option])
-                }
+            .contextMenu {
+                textActions(result.translatedText, copy: "Copy Translation", paste: "Paste Translation", result: result)
                 setActions
             }
         if let pronunciation = result.pronunciation {
-            Item(pronunciation)
+            Text(pronunciation)
                 .id("\(index)-pronunciation")
-                .accessory(pair, tooltip: pair)
+                .badge(pair)
                 .detail { Detail(markdown: pronunciation) }
-                .actions {
-                    ActionSection {
-                        if pastesFirst() {
-                            PasteButton("Paste", text: pronunciation)
-                            CopyButton("Copy", text: pronunciation).keyboardShortcut("c", modifiers: [.command, .shift])
-                        } else {
-                            CopyButton("Copy", text: pronunciation).keyboardShortcut("c", modifiers: [.command, .shift])
-                            PasteButton("Paste", text: pronunciation)
-                        }
-                        toggleDetail
-                        Link(
-                            "Open in Google Translate",
-                            destination: googleTranslateURL(text, from: result.langFrom, to: result.langTo)
-                        )
-                        .keyboardShortcut("return", modifiers: [.option])
-                    }
+                .contextMenu {
+                    textActions(pronunciation, copy: "Copy", paste: "Paste", result: result)
                     setActions
                 }
         }
     }
 
-    private var toggleDetail: Action {
-        Button("Toggle Full Text", systemImage: "text.alignleft") { showingDetail.toggle() }
-            .keyboardShortcut("f")
+    /// Copy and paste in the order the Default Action preference puts them, then the full text and
+    /// Google Translate.
+    private func textActions(_ text: String, copy: String, paste: String, result: Translation) -> some View {
+        Section {
+            if pastesFirst() {
+                PasteButton(paste, text: text)
+                CopyButton(copy, text: text).keyboardShortcut("c", modifiers: [.command, .shift])
+            } else {
+                CopyButton(copy, text: text).keyboardShortcut("c", modifiers: [.command, .shift])
+                PasteButton(paste, text: text)
+            }
+            Button("Toggle Full Text", systemImage: "text.alignleft") { showingDetail.toggle() }
+                .keyboardShortcut("f")
+            Link(
+                "Open in Google Translate",
+                destination: googleTranslateURL(self.text, from: result.langFrom, to: result.langTo)
+            )
+            .keyboardShortcut(.return, modifiers: .option)
+        }
     }
 
-    private var setActions: ActionSection {
-        ActionSection("Language Set") {
+    private var setActions: some View {
+        Section("Language Set") {
             Button("Go to Previous Language Set", systemImage: "arrow.up") { step(-1) }
-                .keyboardShortcut("arrowUp", modifiers: [.command, .option])
+                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
             Button("Go to Next Language Set", systemImage: "arrow.down") { step(1) }
-                .keyboardShortcut("arrowDown", modifiers: [.command, .option])
+                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
             NavigationLink("Manage Language Sets…", systemImage: "pencil") { LanguageSetManager() }
                 .keyboardShortcut("l")
         }
@@ -168,14 +157,15 @@ struct Translate: View {
 struct LanguageSetManager: View {
     @AppStorage("selectedLanguageSet") private var selectedStored = ""
     @AppStorage("languageSets") private var savedStored = ""
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let saved = decodeSets(savedStored)
         let preferences = preferencesSet()
         let selected = LanguageSet(stored: selectedStored) ?? LanguageSet(from: preferences.from, to: [preferences.to[0]])
         return List {
-            Item("Add new language set...", systemImage: "plus")
-                .actions {
+            Label("Add new language set...", systemImage: "plus")
+                .contextMenu {
                     NavigationLink("Add New Language Set…", systemImage: "plus") {
                         AddLanguageSet { set in
                             savedStored = encodeSets(saved + [set])
@@ -186,8 +176,9 @@ struct LanguageSetManager: View {
                     .keyboardShortcut("n")
                 }
             if !saved.contains(selected), selected != preferences {
-                Item("Save current set", subtitle: selected.title, systemImage: "square.and.arrow.down")
-                    .actions {
+                Label("Save current set", systemImage: "square.and.arrow.down")
+                    .subtitle(selected.title)
+                    .contextMenu {
                         Button("Save Current Set") { savedStored = encodeSets(saved + [selected]) }
                     }
             }
@@ -201,25 +192,31 @@ struct LanguageSetManager: View {
                 }
             }
         }
-        .actions {
+        .toolbar {
             Button("Remove All", systemImage: "trash", role: .destructive) { savedStored = "" }
                 .keyboardShortcut("x", modifiers: [.control, .shift])
         }
     }
 
-    private func row(_ set: LanguageSet, selected: Bool, onDelete: (() -> Void)?) -> Item {
-        var item = Item(languageName(set.from) + "   ->", subtitle: " " + set.to.map(languageName).joined(separator: ", "))
+    @ViewBuilder
+    private func row(_ set: LanguageSet, selected: Bool, onDelete: (() -> Void)?) -> some View {
+        let row = Text(languageName(set.from) + "   ->")
+            .subtitle(" " + set.to.map(languageName).joined(separator: ", "))
             .id(set.stored)
-            .keywords([set.from] + set.to + set.to.map(languageName) + [languageName(set.from)])
-        if selected { item = item.content(Image(systemName: "checkmark").tint(.green)) }
-        return item.actions {
-            Button("Select", systemImage: "checkmark") {
-                selectedStored = set.stored
-                dismiss()
+            .searchKeywords([set.from] + set.to + set.to.map(languageName) + [languageName(set.from)])
+            .contextMenu {
+                Button("Select", systemImage: "checkmark") {
+                    selectedStored = set.stored
+                    dismiss()
+                }
+                if let onDelete {
+                    Button("Delete", systemImage: "trash", role: .destructive) { onDelete() }
+                }
             }
-            if let onDelete {
-                Button("Delete", systemImage: "trash", role: .destructive) { onDelete() }
-            }
+        if selected {
+            row.badge(Image(systemName: "checkmark").foregroundStyle(.green))
+        } else {
+            row
         }
     }
 }
@@ -233,32 +230,20 @@ struct AddLanguageSet: View {
     var body: some View {
         Form {
             Picker("Source Language", selection: $from) {
-                for language in languages {
-                    Choice(language.name, value: language.code)
+                ForEach(languages, id: \.code) { language in
+                    Text(language.name).tag(language.code)
                 }
             }
             .id("langFrom")
             ForEach(targets.indices) { index in
-                Picker("Target Language \(index + 1)", selection: target(index)) {
-                    if targets[index].isEmpty { Choice("", value: "") }
-                    for language in languages where language.code != autoDetect {
-                        Choice(language.name, value: language.code)
-                    }
-                }
-                .id("langTo.\(index)")
+                targetPicker(index, empty: targets[index].isEmpty)
             }
             if targets.last.map({ !$0.isEmpty }) ?? true {
-                Picker("Target Language \(targets.count + 1)", selection: target(targets.count)) {
-                    Choice("", value: "")
-                    for language in languages where language.code != autoDetect {
-                        Choice(language.name, value: language.code)
-                    }
-                }
-                .id("langTo.\(targets.count)")
+                targetPicker(targets.count, empty: true)
             }
         }
-        .actions {
-            SubmitButton("Add Language Set") {
+        .toolbar {
+            Button("Add Language Set") {
                 let chosen = targets.filter { !$0.isEmpty }
                 guard !chosen.isEmpty else {
                     Task {
@@ -271,6 +256,16 @@ struct AddLanguageSet: View {
                 onAdd(LanguageSet(from: from, to: chosen))
             }
         }
+    }
+
+    private func targetPicker(_ index: Int, empty: Bool) -> some View {
+        Picker("Target Language \(index + 1)", selection: target(index)) {
+            if empty { Text("").tag("") }
+            ForEach(languages.filter { $0.code != autoDetect }, id: \.code) { language in
+                Text(language.name).tag(language.code)
+            }
+        }
+        .id("langTo.\(index)")
     }
 
     /// The target at `index`; picking in the trailing empty picker adds a target.

@@ -83,46 +83,28 @@ enum AppActionsMenu {
                     core.quicklinkCoordinator.editQuicklink(quicklink)
                 })
         }
-        if app.kind == .extensionCommand {
-            if core.extensions.isBackgroundSchedulable(for: app) {
-                let enabled = core.extensions.isBackgroundEnabled(for: app)
+        if app.kind == .pluginCommand, let ref = PluginCommandRef(entryID: app.id) {
+            let host = core.pluginHost
+            if let (_, _, command) = host.resolve(ref), command.mode == .action, command.interval != nil {
+                let enabled = host.runsInBackground(ref)
                 items.append(
                     PopoverMenuItem(
                         title: enabled
-                            ? String(localized: "Disable Background Refresh")
-                            : String(localized: "Enable Background Refresh"),
+                            ? String(localized: "Stop Running in the Background")
+                            : String(localized: "Run in the Background"),
                         systemImage: enabled ? "pause.circle" : "play.circle", startsSection: true
                     ) {
-                        core.extensions.toggleBackgroundRefresh(for: app)
+                        host.setRunsInBackground(!enabled, ref)
                     })
-                if enabled {
-                    items.append(
-                        PopoverMenuItem(
-                            title: String(localized: "Refresh Now"), systemImage: "arrow.clockwise"
-                        ) {
-                            core.extensions.refreshNow(app)
-                        })
-                }
             }
             // A plugin is a folder the user keeps, so it is configured here and removed in Finder.
-            let isPlugin = core.extensions.resolve(app)?.0.engine == .plugin
             items.append(
                 PopoverMenuItem(
-                    title: isPlugin
-                        ? String(localized: "Configure Plugin") : String(localized: "Configure Extension"),
-                    systemImage: "slider.horizontal.3", startsSection: true
+                    title: String(localized: "Configure Plugin"), systemImage: "slider.horizontal.3",
+                    startsSection: true
                 ) {
-                    core.extensionCoordinator.showExtensionSettings(for: app)
+                    core.pluginCoordinator.showSettings(for: ref.plugin)
                 })
-            if !isPlugin {
-                items.append(
-                    PopoverMenuItem(
-                        title: String(localized: "Uninstall Extension"), systemImage: "trash",
-                        isDestructive: true
-                    ) {
-                        core.extensionCoordinator.confirmUninstall(app)
-                    })
-            }
         }
         return PopoverMenuContent(header: app.name, items: items)
     }
@@ -142,7 +124,7 @@ enum AppActionsMenu {
         }
         let primarySymbol =
             switch app.kind {
-            case .application, .command, .extensionCommand: "list.dash.header.rectangle"
+            case .application, .command, .pluginCommand: "list.dash.header.rectangle"
             default: "list.bullet.rectangle"
             }
         var items = [

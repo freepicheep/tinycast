@@ -1,0 +1,1 @@
+../../../../Tinycast/Features/Plugins/Model/PluginUI.swift

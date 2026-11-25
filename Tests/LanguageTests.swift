@@ -110,18 +110,40 @@ struct LanguageTests {
             ("apple-shortcuts-empty", "Nothing here yet.", ["fr": "Aucun raccourci à afficher."]),
             ("snippets-use-default-folder", "Use Default", ["fr": "Utiliser le dossier par défaut"]),
             ("notes-use-default-folder", "Use Default", ["fr": "Utiliser le dossier par défaut"]),
-            ("dictation-model-installed", "Installed", ["fr": "Installé"]),
+            (
+                "dictation-model-installed", "Installed",
+                [
+                    "de": "Installiert", "es": "Instalado", "fr": "Installé", "ja": "インストール済み",
+                    "ko": "설치됨", "pt": "Instalado", "ru": "Установлено", "zh-Hans": "已安装"
+                ]
+            ),
             ("dictation-language-auto", "Auto", ["fr": "Détection automatique"]),
-            ("ai-installed-tools", "Installed", ["fr": "Outils installés"]),
-            ("extensions-installed-section", "Installed", ["fr": "Extensions installées"]),
-            ("extensions-install-section", "Install", ["fr": "Installation"]),
+            (
+                "ai-installed-tools", "Installed",
+                [
+                    "de": "Installiert", "es": "Instalado", "fr": "Outils installés", "ja": "インストール済み",
+                    "ko": "설치됨", "pt": "Instalado", "ru": "Установлено", "zh-Hans": "已安装"
+                ]
+            ),
             ("unit-category-time", "Time", ["fr": "Durée"]),
             ("window-position-center", "Center", ["fr": "Centre"]),
             ("onboarding-open-launcher", "App Launcher", ["fr": "Ouvrir le lanceur"]),
             ("ai-pinned-conversations", "Pinned", ["fr": "Épinglées"]),
-            ("ai-system-prompt-on", "On", ["fr": "Activées"]),
+            (
+                "ai-system-prompt-on", "On",
+                [
+                    "de": "Ein", "es": "Activado", "fr": "Activées", "ja": "オン",
+                    "ko": "켜짐", "pt": "Ativado", "ru": "Вкл.", "zh-Hans": "开启"
+                ]
+            ),
             ("ai-system-prompt-off", "Off", ["fr": "Désactivées"]),
-            ("ai-web-search-on", "On", ["fr": "Activée"]),
+            (
+                "ai-web-search-on", "On",
+                [
+                    "de": "Ein", "es": "Activado", "fr": "Activée", "ja": "オン",
+                    "ko": "켜짐", "pt": "Ativado", "ru": "Вкл.", "zh-Hans": "开启"
+                ]
+            ),
             ("ai-web-search-off", "Off", ["fr": "Désactivée"]),
             ("reasoning-effort-low", "Low", ["es": "Bajo", "pt": "Baixo"]),
             ("reasoning-effort-medium", "Medium", ["es": "Medio", "fr": "Moyen", "pt": "Médio"]),
@@ -201,7 +223,7 @@ struct LanguageTests {
                 for (key, expected) in [
                     "Medium": "Moyenne", "High": "Élevée", "Light": "Clair", "Dark": "Sombre",
                     "Time": "Heure", "Center": "Centrer", "Pinned": "Épinglés",
-                    "On": "Activé", "Off": "Désactivé", "Untitled": "Sans titre"
+                    "Off": "Désactivé", "Untitled": "Sans titre"
                 ] {
                     check(
                         "French label \(key) resolves in its context",

@@ -1,4 +1,4 @@
-// Signing in to a service with OAuth 2.0 and PKCE, the way Raycast's `OAuth.PKCEClient` does.
+// Signing in to a service with OAuth 2.0 and PKCE.
 
 import Foundation
 import _TinycastHost

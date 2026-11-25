@@ -10,7 +10,7 @@ let plugin = Plugin(
     commands: [
         .view("note", title: "New Note", arguments: [.text("subject", placeholder: "Subject")]),
         .view("colors", title: "Colors"),
-        .menuBar("status", title: "Status", interval: "1m"),
+        .menuBar("status", title: "Status", interval: .minutes(1)),
         .action("toast", title: "Toast"),
         .action("hop", title: "Hop"),
         .action("sign-in", title: "Sign In"),

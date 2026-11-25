@@ -35,7 +35,7 @@ public struct Plugin {
         let icon: String?
         let mode: String
         let keywords: [String]
-        let interval: String?
+        let interval: Interval?
         let arguments: [Argument]
         let preferences: [Preference]
         let disabledByDefault: Bool
@@ -62,15 +62,15 @@ public struct Plugin {
 
         /// A command that does its work and closes the palette, registered with `Plugin.action(name)`.
         /// - Parameter interval: Runs it again in the background this often once it has run,
-        ///   such as `"1m"`, `"12h"` or `"1d"`; a minute at least.
+        ///   such as `.minutes(1)`, `.hours(12)` or `.days(1)`; a minute at least.
         public static func action(
             _ name: String, title: String, subtitle: String? = nil, description: String? = nil,
-            icon: String? = nil, keywords: [String] = [], interval: String? = nil,
+            icon: String? = nil, keywords: [String] = [], interval: Interval? = nil,
             arguments: [Argument] = [], preferences: [Preference] = [], disabledByDefault: Bool = false
         ) -> Command {
             Command(
                 name: name, title: title, subtitle: subtitle, description: description, icon: icon,
-                mode: "no-view", keywords: keywords, interval: interval, arguments: arguments,
+                mode: "action", keywords: keywords, interval: interval, arguments: arguments,
                 preferences: preferences, disabledByDefault: disabledByDefault)
         }
 
@@ -78,14 +78,24 @@ public struct Plugin {
         /// - Parameter interval: Refreshes it this often while it is shown, ten seconds at least.
         public static func menuBar(
             _ name: String, title: String, subtitle: String? = nil, description: String? = nil,
-            icon: String? = nil, keywords: [String] = [], interval: String? = nil,
+            icon: String? = nil, keywords: [String] = [], interval: Interval? = nil,
             preferences: [Preference] = [], disabledByDefault: Bool = false
         ) -> Command {
             Command(
                 name: name, title: title, subtitle: subtitle, description: description, icon: icon,
-                mode: "menu-bar", keywords: keywords, interval: interval, arguments: [],
+                mode: "menuBar", keywords: keywords, interval: interval, arguments: [],
                 preferences: preferences, disabledByDefault: disabledByDefault)
         }
+    }
+
+    /// How often a command runs again: `.seconds(30)`, `.minutes(10)`, `.hours(12)`, `.days(1)`.
+    public struct Interval {
+        let seconds: Double
+
+        public static func seconds(_ count: Double) -> Interval { Interval(seconds: count) }
+        public static func minutes(_ count: Double) -> Interval { Interval(seconds: count * 60) }
+        public static func hours(_ count: Double) -> Interval { Interval(seconds: count * 3600) }
+        public static func days(_ count: Double) -> Interval { Interval(seconds: count * 86400) }
     }
 
     /// A field the launcher shows after a command's title; the command reads it as `Plugin.arguments`.
@@ -264,7 +274,8 @@ struct _Command: Encodable {
     let icon: String?
     let mode: String
     let keywords: [String]
-    let interval: String?
+    /// Seconds.
+    let interval: Double?
     let arguments: [_Argument]
     let preferences: [_Preference]
     let disabledByDefault: Bool?
@@ -315,7 +326,7 @@ func _manifestJSON() throws -> String {
             _Command(
                 name: command.name, title: command.title, subtitle: command.subtitle,
                 description: command.description, icon: command.icon, mode: command.mode,
-                keywords: command.keywords, interval: command.interval,
+                keywords: command.keywords, interval: command.interval?.seconds,
                 arguments: command.arguments.map {
                     _Argument(
                         name: $0.name, type: $0.kind, placeholder: $0.placeholder,

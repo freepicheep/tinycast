@@ -165,7 +165,6 @@ enum SettingsFileSchema {
         case .calendarMenuBarHidesWhenEmpty: return bind(settings, \.calendarMenuBarHidesWhenEmpty)
         case .hideCurrentEvent: return bind(settings, \.hideCurrentEvent)
         case .calendarCommands: return launcher.commandsBinding(for: key, owner: .calendar)
-        case .extensionsShowInLauncher: return bind(settings, \.extensionsShowInLauncher)
         }
     }
 

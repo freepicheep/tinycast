@@ -43,7 +43,7 @@ final class PluginHelperHost {
 
     private let link: ProcessLink<PluginHelperEvent, PluginHelperRequest>
     private var runtimes: [Int: Running] = [:]
-    private var calls: [Int: CheckedContinuation<String, any Error>] = [:]
+    private var calls: [Int: CheckedContinuation<PluginHostAnswer, any Error>] = [:]
     private var nextCall = 1
     private var idleExit: Task<Void, Never>?
     private var kits: [String: PluginSources] = [:]
@@ -81,16 +81,10 @@ final class PluginHelperHost {
         case .launch(let id, let reply, let launch):
             idleExit?.cancel()
             Task { await self.launch(id, reply: reply, launch) }
-        case .dispatch(let id, let reply, let session, let handler, let payload, let completesSession):
+        case .event(let id, let reply, let session, let event, let completesSession):
             Task {
-                await self.runtimes[id]?.runtime.dispatch(
-                    session: session, handler: handler, payload: payload, completesSession: completesSession)
+                await self.runtimes[id]?.runtime.send(event, session: session, completesSession: completesSession)
                 self.send(.reply(reply, .done))
-            }
-        case .pop(let id, let reply, let session):
-            Task {
-                let popped = await self.runtimes[id]?.runtime.popNavigation(session: session) ?? false
-                self.send(.reply(reply, .popped(popped)))
             }
         case .toastAction(let id, let reply, let token):
             Task {
@@ -110,10 +104,10 @@ final class PluginHelperHost {
         case .shutdown(let id):
             runtimes.removeValue(forKey: id)?.runtime.shutdown()
             runtimeEnded()
-        case .hostAnswer(let call, let result, let error):
+        case .hostAnswer(let call, let answer, let error):
             guard let continuation = calls.removeValue(forKey: call) else { return }
-            if let result {
-                continuation.resume(returning: result)
+            if let answer {
+                continuation.resume(returning: answer)
             } else {
                 continuation.resume(
                     throwing: PluginHelperHostError(message: error ?? "The app didn't answer."))
@@ -156,8 +150,7 @@ final class PluginHelperHost {
         runtime.setDelegate(delegate)
         runtimes[id] = Running(runtime: runtime, delegate: delegate, hostAPI: hostAPI)
         do {
-            try await runtime.launch(
-                session: launch.session, commandName: launch.commandName, context: launch.context)
+            try await runtime.launch(session: launch.session, launch: launch.launch)
             send(.reply(reply, .done))
         } catch {
             // Nothing of a failed launch is kept; the app forgets it too.
@@ -218,13 +211,12 @@ final class PluginHelperHost {
     // MARK: - Host calls
 
     /// A call to the app's host API, answered by a `hostAnswer` frame.
-    func hostCall(runtime: Int, api: String, method: String, arguments: [RenderValue]) async throws -> String
-    {
+    func hostCall(runtime: Int, _ hostCall: PluginHostCall) async throws -> PluginHostAnswer {
         let call = nextCall
         nextCall += 1
         return try await withCheckedThrowingContinuation { continuation in
             calls[call] = continuation
-            send(.hostCall(runtime: runtime, call: call, api: api, method: method, arguments: arguments))
+            send(.hostCall(runtime: runtime, call: call, hostCall))
         }
     }
 
@@ -265,7 +257,7 @@ final class PluginHelperHost {
 
     /// The runtime's host API: every call is a frame to the app and back.
     @MainActor
-    final class HostAPI: ExtensionHostAPI {
+    final class HostAPI: PluginHostAPI {
         private weak var host: PluginHelperHost?
         private let runtime: Int
 
@@ -274,9 +266,9 @@ final class PluginHelperHost {
             self.runtime = runtime
         }
 
-        func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
+        func perform(_ call: PluginHostCall) async throws -> PluginHostAnswer {
             guard let host else { throw PluginHelperHostError(message: "The plugin helper is stopping.") }
-            return try await host.hostCall(runtime: runtime, api: api, method: method, arguments: arguments)
+            return try await host.hostCall(runtime: runtime, call)
         }
 
         func sessionEnded() {
@@ -286,7 +278,7 @@ final class PluginHelperHost {
 
     /// The runtime's delegate: each callback is a frame to the app.
     @MainActor
-    final class Delegate: ExtensionRuntimeDelegate {
+    final class Delegate: PluginRuntimeDelegate {
         private weak var host: PluginHelperHost?
         private let runtime: Int
 
@@ -295,24 +287,16 @@ final class PluginHelperHost {
             self.runtime = runtime
         }
 
-        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree) {
-            host?.send(.rendered(runtime: self.runtime, session: session, tree: tree))
+        func runtime(_ runtime: any PluginRuntime, session: String, didRender frame: PluginFrame) {
+            host?.send(.rendered(runtime: self.runtime, session: session, frame: frame))
         }
 
-        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String) {
+        func runtime(_ runtime: any PluginRuntime, session: String, didFail message: String) {
             host?.send(.failed(runtime: self.runtime, session: session, message: message))
         }
 
-        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int) {
-            host?.send(.navigationDepth(runtime: self.runtime, session: session, depth: navigationDepth))
-        }
-
-        func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) {
+        func runtime(_ runtime: any PluginRuntime, session: String, didFinish: Void) {
             host?.send(.finished(runtime: self.runtime, session: session))
-        }
-
-        func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {
-            host?.send(.log(runtime: self.runtime, level: level, message: message))
         }
     }
 }

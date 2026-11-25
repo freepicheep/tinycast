@@ -192,8 +192,8 @@ struct LauncherScreen: PaletteScreen {
                 metrics: core.settings.interfaceSize.metrics, focus: focus,
                 onSubmit: { activate(at: selection) })
         }
-        return ExtensionArgumentsAccessory.make(
-            entry: entry, coordinator: core.extensionCoordinator,
+        return PluginArgumentsAccessory.make(
+            entry: entry, coordinator: core.pluginCoordinator,
             values: { name in headerFieldBinding(entry: entry, name: name) },
             focus: focus, metrics: core.settings.interfaceSize.metrics,
             onSubmit: { activate(at: selection) })

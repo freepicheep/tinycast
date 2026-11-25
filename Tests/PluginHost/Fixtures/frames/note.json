@@ -1,0 +1,127 @@
+{
+  "depth" : 1,
+  "generation" : 0,
+  "screen" : {
+    "kind" : "form",
+    "value" : {
+      "chrome" : {
+        "actions" : [
+          {
+            "children" : [
+
+            ],
+            "handler" : 1,
+            "id" : "Save",
+            "title" : "Save"
+          }
+        ],
+        "isLoading" : false,
+        "pickers" : [
+
+        ],
+        "title" : "New Note"
+      },
+      "fields" : [
+        {
+          "autoFocus" : false,
+          "id" : "Subject",
+          "kind" : {
+            "kind" : "textField",
+            "prompt" : "What about?",
+            "text" : "Groceries"
+          },
+          "title" : "Subject"
+        },
+        {
+          "autoFocus" : false,
+          "id" : "Body",
+          "kind" : {
+            "kind" : "textEditor",
+            "text" : ""
+          },
+          "title" : "Body"
+        },
+        {
+          "autoFocus" : false,
+          "id" : "Urgent",
+          "kind" : {
+            "isOn" : false,
+            "kind" : "toggle",
+            "text" : "Urgent"
+          },
+          "title" : "Urgent"
+        },
+        {
+          "autoFocus" : false,
+          "id" : "Kind",
+          "kind" : {
+            "kind" : "picker",
+            "picker" : {
+              "id" : "Kind",
+              "options" : [
+                {
+                  "title" : "Idea"
+                },
+                {
+                  "title" : "Task"
+                }
+              ],
+              "selection" : 0,
+              "title" : "Kind"
+            }
+          },
+          "title" : "Kind"
+        },
+        {
+          "autoFocus" : false,
+          "id" : "Tags",
+          "kind" : {
+            "kind" : "multiPicker",
+            "options" : [
+              {
+                "title" : "Home"
+              },
+              {
+                "title" : "Work"
+              }
+            ],
+            "selection" : [
+
+            ]
+          },
+          "title" : "Tags"
+        },
+        {
+          "autoFocus" : false,
+          "id" : "Due",
+          "kind" : {
+            "includesTime" : true,
+            "kind" : "datePicker",
+            "value" : 0
+          },
+          "title" : "Due"
+        },
+        {
+          "autoFocus" : false,
+          "id" : "field",
+          "kind" : {
+            "kind" : "separator"
+          }
+        },
+        {
+          "autoFocus" : false,
+          "id" : "field#2",
+          "kind" : {
+            "kind" : "text",
+            "text" : "Unsaved"
+          },
+          "title" : "Status"
+        }
+      ]
+    }
+  },
+  "version" : {
+    "major" : 1,
+    "minor" : 0
+  }
+}

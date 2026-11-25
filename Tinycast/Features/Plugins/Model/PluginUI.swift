@@ -19,8 +19,8 @@ struct PluginProtocolVersion {
 @ScriftExport
 struct PluginFrame {
     var version: PluginProtocolVersion
-    /// Counts the command's renders; events name the generation they were sent from, and the kit
-    /// drops those from an older one.
+    /// Counts the command's renders. An action names the generation the host drew it from; the kit
+    /// runs that generation's closure, and drops an action from a generation too old to keep.
     var generation: Int
     /// Screens on the command's navigation stack; more than one means Escape goes back.
     var depth: Int
@@ -283,7 +283,7 @@ enum PluginEffect {
     case trash([String])
     /// The next screen: the handler pushes it.
     case push
-    /// A form's submit: the fields marked `storeValue` are saved first.
+    /// A form's submit, which ⌘Return runs wherever the focus is.
     case submit
     /// `children` under a heading.
     case section
@@ -356,7 +356,7 @@ struct PluginFormScreen {
 
 @ScriftExport
 struct PluginField {
-    /// Also what the field's value is saved under with `storeValue`.
+    /// Also the node a `set` event names for the field's binding.
     var id: String
     var title: String?
     var info: String?
@@ -449,6 +449,22 @@ enum PluginEvent {
     case search(String, generation: Int)
     /// Escape or the back chevron.
     case back
+}
+
+extension PluginProtocolVersion {
+    /// Every type of the contract, for the host module a plugin's kit renders into.
+    static var contractTypes: [any ScriftExportable.Type] {
+        [
+            PluginProtocolVersion.self, PluginFrame.self, PluginScreen.self, PluginChrome.self, PluginSearchField.self,
+            PluginPicker.self, PluginOption.self, PluginListScreen.self, PluginGridScreen.self, PluginImageFit.self,
+            PluginGridInset.self, PluginSection.self, PluginRow.self, PluginEmptyState.self, PluginAccessory.self,
+            PluginText.self, PluginTextContent.self, PluginDateStyle.self, PluginImage.self, PluginImageMask.self,
+            PluginColor.self, PluginSemanticColor.self, PluginAction.self, PluginActionRole.self, PluginEffect.self,
+            PluginShortcut.self, PluginKey.self, PluginModifier.self, PluginDetailScreen.self, PluginMetadataItem.self,
+            PluginTag.self, PluginFormScreen.self, PluginField.self, PluginFieldKind.self, PluginFieldValue.self,
+            PluginMenuBarScreen.self, PluginMenuItem.self, PluginMenuItemKind.self, PluginMenuAlternate.self,
+        ]
+    }
 }
 
 // MARK: - Conformances, which Swift synthesizes only in this file

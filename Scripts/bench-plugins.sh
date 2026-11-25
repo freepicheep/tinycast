@@ -1,23 +1,19 @@
 #!/bin/bash
-# Time, CPU and memory of the same commands under the Raycast JS runtime and the Scrift plugin
-# runtime, measured by Tests/PluginHost's plugin-bench the way the palette runs a command: a fresh
-# runtime per launch. Engines alternate process by process so network conditions even out. Scrift
-# runs twice: in the bench's process, and in the plugin helper as the app runs it, where the app's
-# side is the pipe and the helper's memory is its own column.
+# Time, CPU, memory and frame size of the example plugins' commands, measured by Tests/PluginHost's
+# plugin-bench the way the palette runs a command: a fresh runtime per launch. Each command runs in
+# the bench's own process and in the plugin helper as the app runs it, where the app's side is the
+# pipe and the helper's memory is its own column; the two alternate process by process so network
+# conditions even out.
 #
 #   Scripts/bench-plugins.sh [processes] [launches per process]
 #
-# The JS versions are installed store extensions: BENCH_JS_EXTENSIONS (default: the app's
-# extensions folder) holds hacker-news and cleanshotx; BENCH_JS_GOOGLE_TRANSLATE points at a built
-# google-translate, whose cases are skipped without it. Google Translate and Hacker News fetch live.
+# Google Translate and Hacker News fetch live.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PROCESSES=${1:-7}
 LAUNCHES=${2:-6}
-JS=${BENCH_JS_EXTENSIONS:-"$HOME/Library/Application Support/com.abueammar.tinycast/extensions"}
-GT=${BENCH_JS_GOOGLE_TRANSLATE:-}
 EXAMPLES=$PWD/Examples/Plugins
 BUILD=${BENCH_BUILD:-"${TMPDIR:-/tmp}/tinycast-plugin-host"}
 OUT="${TMPDIR:-/tmp}/tinycast-plugin-bench"
@@ -28,36 +24,32 @@ rm -rf "$OUT" && mkdir -p "$OUT/cache"
     || { tail -20 "$OUT/build.log"; exit 1; }
 BENCH="$BUILD/release/plugin-bench"
 
-# name | JS directory | JS command | plugin | plugin command | goal
+# name | plugin | command | goal
 CASES=(
-    "Hacker News (view)|$JS/hacker-news|frontpage|hacker-news|stories|BENCH_ITEMS=30"
-    "CleanShot X capture-area (no-view)|$JS/cleanshotx|capture-area|cleanshot-x|capture-area|"
+    "Hacker News (view)|hacker-news|stories|BENCH_ITEMS=30"
+    "Hacker News top story (menu bar)|hacker-news|top-story|BENCH_ITEMS=6"
+    "CleanShot X (view)|cleanshot-x|cleanshot|BENCH_ITEMS=19"
+    "CleanShot X capture-area (action)|cleanshot-x|capture-area|"
+    "Google Translate (view)|google-translate|translate|BENCH_NEEDLE=Guten Morgen"
+    "Google Translate instant copy (action)|google-translate|instant-translate-copy|"
 )
-if [ -n "$GT" ]; then
-    CASES=(
-        "Google Translate (view)|$GT|translate|google-translate|translate|BENCH_NEEDLE=Guten Morgen"
-        "Google Translate instant copy (no-view)|$GT|instant-translate-copy|google-translate|instant-translate-copy|"
-        "${CASES[@]}"
-    )
-fi
 export BENCH_PREFS='{"langFrom":"auto","lang1":"de","lang2":"fr","autoInput":true}'
 
 for entry in "${CASES[@]}"; do
-    IFS='|' read -r name js_dir js_command plugin plugin_command goal <<< "$entry"
-    file="$OUT/$(echo "$plugin_command-$plugin" | tr ' ' '-').jsonl"
+    IFS='|' read -r name plugin command goal <<< "$entry"
+    file="$OUT/$command-$plugin.jsonl"
     echo "▶ $name"
     # A first launch ever: no compiled module on disk yet.
     for _ in $(seq "$PROCESSES"); do
         rm -rf "$OUT/cache-fresh"
-        env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$plugin_command" 1 "$OUT/cache-fresh" \
+        env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$command" 1 "$OUT/cache-fresh" \
             | sed 's/"engine":"scrift"/"engine":"scrift-uncached"/' >> "$file"
     done
     # As the app has it after its first scan: the manifest's result and the modules on disk.
-    env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$plugin_command" 1 "$OUT/cache" > /dev/null
+    env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$command" 1 "$OUT/cache" > /dev/null
     for _ in $(seq "$PROCESSES"); do
-        env ${goal:+"$goal"} "$BENCH" js "$js_dir" "$js_command" "$LAUNCHES" >> "$file"
-        env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$plugin_command" "$LAUNCHES" "$OUT/cache" >> "$file"
-        env ${goal:+"$goal"} "$BENCH" helper "$EXAMPLES/$plugin" "$plugin_command" "$LAUNCHES" "$OUT/cache" >> "$file"
+        env ${goal:+"$goal"} "$BENCH" scrift "$EXAMPLES/$plugin" "$command" "$LAUNCHES" "$OUT/cache" >> "$file"
+        env ${goal:+"$goal"} "$BENCH" helper "$EXAMPLES/$plugin" "$command" "$LAUNCHES" "$OUT/cache" >> "$file"
     done
 done
 
@@ -69,6 +61,7 @@ def median(values):
 
 def ms(value): return f"{value * 1000:7.1f}"
 def mb(value): return f"{value / 1048576:6.1f}"
+def kb(value): return f"{value / 1024:7.1f}"
 
 for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.jsonl"))):
     rows = [json.loads(line) for line in open(path) if line.startswith("{")]
@@ -77,22 +70,23 @@ for path in sorted(glob.glob(os.path.join(sys.argv[1], "*.jsonl"))):
     print(f"\n## {os.path.basename(path)[:-6]}  ({len(launches)} launches, {len(failed)} failed)")
     for r in failed[:3]:
         print(f"   failed: {r['engine']} {r['failure'][:120]}")
-    print(f"{'':28}{'first render':>13}{'done':>9}{'CPU':>9}{'Δ memory':>10}{'retained':>10}")
-    for engine, label, cold in [("js", "JS, first in process", True), ("scrift", "Scrift, first in process", True),
-                                ("scrift-uncached", "Scrift, never compiled", True),
-                                ("helper", "Scrift helper, first", True),
-                                ("js", "JS, warm", False), ("scrift", "Scrift, warm", False),
-                                ("helper", "Scrift helper, warm", False)]:
+    print(f"{'':26}{'first frame':>12}{'done':>9}{'CPU':>9}{'Δ memory':>10}{'retained':>10}{'frame':>10}{'encode':>9}")
+    for engine, label, cold in [("scrift", "In process, first", True), ("scrift-uncached", "Never compiled", True),
+                                ("helper", "Helper, first", True), ("scrift", "In process, warm", False),
+                                ("helper", "Helper, warm", False)]:
         picked = [r for r in launches if r["ok"] and r["engine"] == engine and (r["iteration"] == 0) == cold]
         if not picked: continue
         first = [r["first_render_s"] for r in picked if r["first_render_s"] >= 0]
-        print(f"{label:28}{(ms(median(first)) + ' ms') if first else '        —':>13}"
+        frames = [r["frame_bytes_max"] for r in picked if r.get("frame_bytes_max")]
+        encodes = [r["encode_s"] for r in picked if r.get("frame_bytes_max")]
+        print(f"{label:26}{(ms(median(first)) + ' ms') if first else '         —':>12}"
               f"{ms(median([r['content_s'] for r in picked]))} ms{ms(median([r['cpu_s'] for r in picked]))} ms"
-              f"{mb(median([r['footprint_during'] for r in picked]))} MB{mb(median([r['footprint_retained'] for r in picked]))} MB")
+              f"{mb(median([r['footprint_during'] for r in picked]))} MB{mb(median([r['footprint_retained'] for r in picked]))} MB"
+              + (f"{kb(median(frames))} KB{ms(median(encodes))} ms" if frames else ""))
     helped = [r["helper_footprint"] for r in launches if r["ok"] and r["engine"] == "helper" and r.get("helper_footprint")]
     if helped:
         print(f"helper: footprint after a launch{mb(median(helped))} MB median,{mb(max(helped))} MB most")
-    for engine in ["js", "scrift", "helper"]:
+    for engine in ["scrift", "helper"]:
         summaries = [r for r in rows if r.get("summary") and r["engine"] == engine]
         if not summaries: continue
         print(f"{engine:>6}: setup {ms(median([s['setup_cpu_s'] for s in summaries]))} ms CPU,"

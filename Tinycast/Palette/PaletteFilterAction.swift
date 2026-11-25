@@ -2,8 +2,8 @@ import Foundation
 
 /// Which header menu ⌘P opens; a running command's own dropdown always answers first.
 enum PaletteFilterAction: Equatable {
-    /// A running command's `searchBarAccessory` dropdown.
-    case extensionAccessory
+    /// A running plugin command's toolbar picker.
+    case pluginPicker
     case clipboardFilter
     case fileSearchFilter
     case emojiCategory
@@ -13,12 +13,12 @@ enum PaletteFilterAction: Equatable {
     case ignored
 
     static func resolve(
-        collapsed: Bool, mode: PaletteMode, commandHasAccessory: Bool
+        collapsed: Bool, mode: PaletteMode, commandHasPicker: Bool
     ) -> Self {
         // The compact bar draws no header controls, so neither filter has a button to hang off.
         guard !collapsed else { return .ignored }
         switch mode {
-        case .extensionCommand: return commandHasAccessory ? .extensionAccessory : .ignored
+        case .pluginCommand: return commandHasPicker ? .pluginPicker : .ignored
         case .clipboard: return .clipboardFilter
         case .fileSearch: return .fileSearchFilter
         case .emoji: return .emojiCategory

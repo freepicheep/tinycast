@@ -4,7 +4,7 @@ struct Spin: View {
     @State var count = 0
     var body: some View {
         List {
-            Item("Spin").actions {
+            Label("Spin", systemImage: "arrow.clockwise").contextMenu {
                 Button("Forever") { while true { count += 1 } }
             }
         }

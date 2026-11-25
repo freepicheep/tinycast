@@ -1,0 +1,70 @@
+{
+  "depth" : 1,
+  "generation" : 0,
+  "screen" : {
+    "kind" : "menuBar",
+    "value" : {
+      "icon" : {
+        "kind" : "symbol",
+        "name" : "number"
+      },
+      "isLoading" : false,
+      "items" : [
+        {
+          "children" : [
+
+          ],
+          "handler" : 1,
+          "id" : "Add",
+          "kind" : "item",
+          "shortcut" : {
+            "key" : {
+              "kind" : "character",
+              "text" : "a"
+            },
+            "modifiers" : [
+              "command"
+            ]
+          },
+          "title" : "Add"
+        },
+        {
+          "children" : [
+
+          ],
+          "id" : "item",
+          "kind" : "separator",
+          "title" : ""
+        },
+        {
+          "children" : [
+            {
+              "children" : [
+                {
+                  "children" : [
+
+                  ],
+                  "handler" : 2,
+                  "id" : "To zero",
+                  "kind" : "item",
+                  "title" : "To zero"
+                }
+              ],
+              "id" : "Reset",
+              "kind" : "submenu",
+              "title" : "Reset"
+            }
+          ],
+          "id" : "More",
+          "kind" : "section",
+          "title" : "More"
+        }
+      ],
+      "title" : "0"
+    }
+  },
+  "version" : {
+    "major" : 1,
+    "minor" : 0
+  }
+}

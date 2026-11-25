@@ -1,56 +1,68 @@
 import Foundation
 import Tinycast
 
+enum Kind: String, CaseIterable, Codable, Identifiable {
+    case idea
+    case task
+
+    var id: String { rawValue }
+}
+
 struct Note: View {
-    @State var subject = Plugin.arguments["subject"] ?? ""
-    @State var body_ = ""
+    @AppStorage("subject") var subject = Plugin.arguments["subject"] ?? ""
+    @State var text = ""
     @State var urgent = false
-    @State var kind = "idea"
-    @State var tags: [String] = []
-    @State var due: Date? = nil
+    @State var kind = Kind.idea
+    @State var tags: Set<String> = []
+    @State var due = Date(timeIntervalSince1970: 0)
     @State var saved = ""
 
     var body: some View {
         Form {
-            TextField("Subject", text: $subject, prompt: "What about?").storeValue()
-            TextEditor("Body", text: $body_)
+            TextField("Subject", text: $subject, prompt: "What about?")
+            TextEditor("Body", text: $text)
             Toggle("Urgent", isOn: $urgent)
             Picker("Kind", selection: $kind) {
-                Choice("Idea", value: "idea")
-                Choice("Task", value: "task")
+                ForEach(Kind.allCases) { kind in Text(kind.rawValue.capitalized).tag(kind) }
             }
-            TagPicker("Tags", selection: $tags) {
-                Choice("Home", value: "home")
-                Choice("Work", value: "work")
+            MultiPicker("Tags", selection: $tags) {
+                Text("Home").tag("home")
+                Text("Work").tag("work")
             }
             DatePicker("Due", selection: $due)
             Divider()
-            Text(saved.isEmpty ? "Unsaved" : saved, title: "Status")
+            LabeledContent("Status", value: saved.isEmpty ? "Unsaved" : saved)
         }
         .navigationTitle(Plugin.launchContext["origin"] == nil ? "New Note" : "Note from hop")
-        .actions {
-            SubmitButton("Save") { saved = "Saved \(subject) \(kind) \(tags.joined(separator: ","))" }
+        .toolbar {
+            Button("Save") { saved = "Saved \(subject) \(kind.rawValue) \(tags.sorted().joined(separator: ","))" }
         }
     }
 }
 
+enum Palette: String, Codable, CaseIterable {
+    case warm
+    case cool
+}
+
 struct Colors: View {
-    @AppStorage("palette") var palette = "warm"
+    @AppStorage("palette") var palette = Palette.warm
 
     var body: some View {
-        Grid(columns: 4, aspectRatio: "3/2") {
+        Grid(columns: 4, aspectRatio: 1.5) {
             Section("Swatches") {
-                Item("Red", color: .red)
-                Item("Star", systemImage: "star")
-                Item(palette == "warm" ? "Sun" : "Ice", emoji: palette == "warm" ? "☀️" : "🧊")
-                    .actions { CopyButton(text: palette) }
+                Label("Red", image: Image(color: .red))
+                Label("Star", systemImage: "star")
+                Label(palette == .warm ? "Sun" : "Ice", image: Image(emoji: palette == .warm ? "☀️" : "🧊"))
+                    .contextMenu { CopyButton(text: palette.rawValue) }
             }
         }
-        .searchBarAccessory(
-            Dropdown("Palette", selection: $palette) {
-                Choice("Warm", value: "warm")
-                Choice("Cool", value: "cool")
-            })
+        .toolbar {
+            Picker("Palette", selection: $palette) {
+                Text("Warm").tag(Palette.warm)
+                Text("Cool").tag(Palette.cool)
+            }
+        }
     }
 }
 
@@ -59,12 +71,12 @@ struct Status: View {
 
     var body: some View {
         MenuBarExtra("\(count)", systemImage: "number") {
-            MenuItem("Add") { count += 1 }
+            Button("Add") { count += 1 }
                 .keyboardShortcut("a")
             Divider()
             Section("More") {
                 Menu("Reset") {
-                    MenuItem("To zero") { count = 0 }
+                    Button("To zero") { count = 0 }
                 }
             }
         }

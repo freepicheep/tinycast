@@ -2,7 +2,7 @@ import Foundation
 import Tinycast
 
 /// One hit from HN's Algolia API; a field HN leaves out of a hit arrives as nil.
-struct Story: Decodable {
+struct Story: Decodable, Identifiable {
     let objectID: String
     let title: String?
     let url: String?
@@ -10,6 +10,8 @@ struct Story: Decodable {
     let points: Int?
     let numComments: Int?
     let createdAtI: Int
+
+    var id: String { objectID }
 
     var discussionURL: String { "https://news.ycombinator.com/item?id=\(objectID)" }
 
@@ -44,11 +46,13 @@ enum FeedError: Error {
     case status(Int)
 }
 
-enum Feed: String, CaseIterable {
+enum Feed: String, CaseIterable, Codable, Identifiable {
     case frontPage = "front-page"
     case newest
     case ask
     case show
+
+    var id: String { rawValue }
 
     var title: String {
         switch self {

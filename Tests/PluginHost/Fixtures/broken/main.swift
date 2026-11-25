@@ -1,3 +1,3 @@
 import Tinycast
 
-Plugin.command("one") { List { Item(42) } }
+Plugin.command("one") { List { Label(42) } }

@@ -13,7 +13,7 @@ struct PluginManifest: Sendable, Hashable {
     let permissions: Set<PluginPermission>
     /// App link schemes the plugin may open, such as `cleanshot`; web, mail and files need none.
     let urlSchemes: Set<String>
-    /// Settings every command reads, in the shape Raycast's `package.json` gives them.
+    /// Settings every command reads, which the user sets in Settings › Plugins.
     let preferences: [PluginPreference]
     let commands: [PluginCommand]
 }
@@ -40,6 +40,12 @@ struct PluginPreference: Sendable, Hashable, Codable {
     static let kinds: Set<String> = [
         "textfield", "password", "checkbox", "dropdown", "appPicker", "file", "directory"
     ]
+
+    /// What the command reads before the user sets it.
+    var defaultValue: PluginValue? {
+        if type == "checkbox" { return .bool(defaultFlag ?? false) }
+        return defaultText.map(PluginValue.string)
+    }
 }
 
 /// A field the launcher collects before a command runs, declared with `Plugin.Argument`.
@@ -70,14 +76,14 @@ enum PluginPermission: String, Sendable, Hashable, CaseIterable, Codable {
 }
 
 struct PluginCommand: Sendable, Hashable, Identifiable {
-    /// Raycast's command modes, spelled as its `package.json` spells them.
+    /// How a command runs, by the `Plugin` call that registers it.
     enum Mode: String, Sendable, Hashable, Codable {
         /// Opens a screen in the palette, registered with `Plugin.command`.
         case view
         /// Runs and closes the palette, registered with `Plugin.action`.
-        case action = "no-view"
+        case action
         /// A menu in the menu bar, registered with `Plugin.menuBar`.
-        case menuBar = "menu-bar"
+        case menuBar
     }
 
     let name: String
@@ -87,8 +93,8 @@ struct PluginCommand: Sendable, Hashable, Identifiable {
     let icon: String?
     let mode: Mode
     let keywords: [String]
-    /// How often it runs again in the background, as Raycast writes it: `"1m"`, `"12h"`.
-    let interval: String?
+    /// Seconds between background runs, or menu-bar refreshes.
+    let interval: TimeInterval?
     let arguments: [PluginArgument]
     let preferences: [PluginPreference]
     let disabledByDefault: Bool
@@ -110,7 +116,7 @@ enum PluginManifestError: Error, Hashable, CustomStringConvertible, Codable {
     case unknownPermission(String)
     case invalidURLScheme(String)
     case invalidPreference(String)
-    case invalidInterval(String)
+    case invalidInterval(Double)
 
     var description: String {
         switch self {
@@ -127,8 +133,8 @@ enum PluginManifestError: Error, Hashable, CustomStringConvertible, Codable {
         case .unknownPermission(let name): "“\(name)” isn't a permission Tinycast grants"
         case .invalidURLScheme(let scheme): "“\(scheme)” isn't a URL scheme a plugin may open"
         case .invalidPreference(let name): "the preference “\(name)” is declared twice or has no type"
-        case .invalidInterval(let interval):
-            "“\(interval)” isn't an interval; write a number and s, m, h or d, such as \"10m\""
+        case .invalidInterval(let seconds):
+            "an interval of \(seconds) seconds can't be: write one more than zero, such as .minutes(10)"
         }
     }
 }
@@ -165,7 +171,7 @@ extension PluginManifest {
             guard seen.insert(command.name).inserted else { throw .duplicateCommand(command.name) }
             let commandPreferences = command.preferences ?? []
             try checkPreferences(preferences + commandPreferences)
-            if let interval = command.interval, ExtensionRefreshPolicy.parse(interval, floor: 0) == nil {
+            if let interval = command.interval, !(interval.isFinite && interval > 0) {
                 throw .invalidInterval(interval)
             }
             commands.append(
@@ -248,60 +254,9 @@ extension PluginManifest {
         let icon: String?
         let mode: PluginCommand.Mode?
         let keywords: [String]?
-        let interval: String?
+        let interval: TimeInterval?
         let arguments: [PluginArgument]?
         let preferences: [PluginPreference]?
         let disabledByDefault: Bool?
-    }
-}
-
-// MARK: - In the Extensions host
-
-extension PluginManifest {
-    /// The prefix that keeps a plugin's name apart from every Raycast extension's: their names
-    /// can't hold a dot, so `plugin.hacker-news` is never one of them.
-    static let hostNamePrefix = ExtensionEngine.pluginNamePrefix
-
-    var hostName: String { Self.hostNamePrefix + name }
-
-    /// The manifest as the Extensions host reads a `package.json`, so the palette, menu bar,
-    /// background refresh, arguments and preferences treat a plugin's commands as their own.
-    func extensionManifest() -> ExtensionManifest? {
-        func preference(_ preference: PluginPreference) -> [String: Any] {
-            var json: [String: Any] = ["name": preference.name, "type": preference.type, "title": preference.title]
-            json["label"] = preference.label
-            json["description"] = preference.description
-            json["placeholder"] = preference.placeholder
-            json["required"] = preference.required
-            if let text = preference.defaultText {
-                json["default"] = text
-            } else if let flag = preference.defaultFlag {
-                json["default"] = flag
-            }
-            json["data"] = preference.data?.map { ["title": $0.title, "value": $0.value] }
-            return json
-        }
-        var json: [String: Any] = [
-            "name": hostName, "title": title, "description": description ?? "", "author": author ?? "",
-            "preferences": preferences.map(preference),
-            "commands": commands.map { command -> [String: Any] in
-                var entry: [String: Any] = [
-                    "name": command.name, "title": command.title, "mode": command.mode.rawValue,
-                    "keywords": command.keywords, "description": command.description ?? "",
-                    "preferences": command.preferences.map(preference),
-                    "arguments": command.arguments.map { argument -> [String: Any] in
-                        ["name": argument.name, "type": argument.type, "placeholder": argument.placeholder,
-                         "required": argument.required ?? false]
-                    },
-                    "disabledByDefault": command.disabledByDefault
-                ]
-                entry["subtitle"] = command.subtitle ?? title
-                entry["icon"] = command.icon
-                entry["interval"] = command.interval
-                return entry
-            }
-        ]
-        json["icon"] = icon
-        return ExtensionManifest(json: json)
     }
 }

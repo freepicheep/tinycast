@@ -1,4 +1,4 @@
-// Google Translate's languages, as Raycast's extension lists them: code and English name.
+// Google Translate's languages: code and English name.
 
 struct Language {
     let code: String

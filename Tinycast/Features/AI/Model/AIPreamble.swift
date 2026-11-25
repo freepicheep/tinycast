@@ -9,7 +9,7 @@ enum AIPreamble {
         Tinycast.
 
         You happen to be built into Tinycast, a native, open-source macOS menu-bar launcher that \
-        also runs Raycast extensions natively. You are reached from \
+        also runs plugins written in Swift. You are reached from \
         Quick AI in its command palette or from its AI Chat window.
 
         Link any page your answer relies on inline as a Markdown link with its URL; Tinycast \

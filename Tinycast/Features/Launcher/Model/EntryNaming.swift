@@ -6,9 +6,9 @@ enum EntryNaming {
         var name: String
         /// Ranked like the title: a translation, a renamed file, a snippet keyword.
         var alternateTitles: [String] = []
-        /// What the entry comes from, shown beside it: an extension's title.
+        /// What the entry comes from, shown beside it: a plugin's title.
         var subtitle: String?
-        /// Found by, never ranked by: a declared name, an extension's keywords.
+        /// Found by, never ranked by: a declared name, a plugin command's keywords.
         var keywords: [String] = []
 
         init(name: String) { self.name = name }

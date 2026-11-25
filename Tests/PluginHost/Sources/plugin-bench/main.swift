@@ -2,18 +2,18 @@ import Darwin
 import Foundation
 import Scrift
 
-// Measures one command under one engine, the way the palette runs it: a fresh runtime per launch,
-// booted, launched, waited on until its content shows (a view) or it ends (a no-view command),
-// then stopped and shut down. Scripts/bench-plugins.sh runs each case in its own process,
-// alternating engines, and summarizes.
+// Measures one command the way the palette runs it: a fresh runtime per launch, launched, waited on
+// until its content shows (a view) or it ends (an action), then stopped and shut down.
+// Scripts/bench-plugins.sh runs each case in its own process, alternating where it runs, and
+// summarizes.
 //
-//     plugin-bench <js|scrift|helper> <directory> <command> <iterations> [cache directory]
+//     plugin-bench <scrift|helper> <directory> <command> <iterations> [cache directory]
 //
-// `helper` runs the Scrift runtime in the plugin helper next to this binary, as the app does: the
-// numbers then include the pipe, and `helper_footprint` is the helper's own memory.
-// Prints one JSON line per launch, then one for the process. A view is done once it shows
-// BENCH_NEEDLE, or BENCH_ITEMS items (default 1); BENCH_PREFS is JSON preferences, BENCH_TIMEOUT
-// seconds bounds a launch, BENCH_SETTLE_MS is the pause after one, BENCH_DUMP prints each final screen.
+// `helper` runs the runtime in the plugin helper next to this binary, as the app does: the numbers
+// then include the pipe, and `helper_footprint` is the helper's own memory.
+// Prints one JSON line per launch, then one for the process. A view is done once its frame shows
+// BENCH_NEEDLE, or BENCH_ITEMS rows (default 1); BENCH_PREFS is JSON preferences, BENCH_TIMEOUT
+// seconds bounds a launch, BENCH_SETTLE_MS is the pause after one, BENCH_DUMP prints each last frame.
 
 // MARK: - Process measurements
 
@@ -58,68 +58,68 @@ func seconds(_ duration: Duration) -> Double {
 
 // MARK: - Host
 
-/// The app's real fetch, canned answers for everything that would reach the desktop.
+/// Canned answers for everything that would reach the desktop.
 @MainActor
-final class BenchHost: ExtensionHostAPI {
+final class BenchHost: PluginHostAPI {
     var log: [String] = []
-    private let fetcher = ExtensionFetcher()
 
-    func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
-        log.append(api + "." + method)
-        if api == "fetch" {
-            return ExtensionJSON.string(from: try await fetcher.request(arguments.first))
-        }
-        switch api + "." + method {
-        case "system.selectedText": return #""Good morning""#
-        case "feedback.showToast": return "1"
-        case "feedback.confirmAlert": return "true"
-        case "storage.all": return "{}"
-        case "storage.get", "clipboard.readText": return #""""#
-        case "system.applications": return "[]"
-        case "system.frontmostApplication":
-            return #"{"name":"Finder","path":"/System/Library/CoreServices/Finder.app","bundleId":"com.apple.finder"}"#
-        default: return ""
+    func perform(_ call: PluginHostCall) async throws -> PluginHostAnswer {
+        log.append("\(call)")
+        switch call {
+        case .selectedText: return .text("Good morning")
+        case .showToast: return .int(1)
+        case .confirm: return .bool(true)
+        case .applications: return .applications([])
+        case .frontmostApplication:
+            return .application(
+                PluginApplication(
+                    name: "Finder", path: "/System/Library/CoreServices/Finder.app", bundleID: "com.apple.finder"))
+        default: return .none
         }
     }
 
     func sessionEnded() {}
 }
 
+/// Each frame as the pipe and the palette get it: its JSON, and how long encoding it took.
 @MainActor
-final class Recorder: ExtensionRuntimeDelegate {
-    var tree: RenderTree?
+final class Recorder: PluginRuntimeDelegate {
+    var frame: PluginFrame?
     var renders = 0
     var firstRender: ContinuousClock.Instant?
+    var frameBytes: [Int] = []
+    var encodeSeconds: [Double] = []
+    var json = ""
     var failure: String?
     var finished = false
+    private let encoder = JSONEncoder()
 
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didRender tree: RenderTree) {
-        self.tree = tree
-        renders += 1
+    func runtime(_ runtime: any PluginRuntime, session: String, didRender frame: PluginFrame) {
         if firstRender == nil { firstRender = .now }
+        self.frame = frame
+        renders += 1
+        let started = ContinuousClock.now
+        let data = (try? encoder.encode(frame)) ?? Data()
+        encodeSeconds.append(seconds(ContinuousClock.now - started))
+        frameBytes.append(data.count)
+        json = String(decoding: data, as: UTF8.self)
     }
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFail message: String) {
-        failure = message
-    }
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, navigationDepth: Int) {}
-    func runtime(_ runtime: any ExtensionCommandRuntime, session: String, didFinish: Void) { finished = true }
-    func runtime(_ runtime: any ExtensionCommandRuntime, log level: String, message: String) {}
+    func runtime(_ runtime: any PluginRuntime, session: String, didFail message: String) { failure = message }
+    func runtime(_ runtime: any PluginRuntime, session: String, didFinish: Void) { finished = true }
 }
 
-/// What the screen shows: its items, and whether any string in it has `needle`.
-func items(in node: RenderNode) -> Int {
-    (node.type.hasSuffix("Item") ? 1 : 0) + node.children.reduce(0) { $0 + items(in: $1) }
-}
-
-func contains(_ needle: String, in node: RenderNode) -> Bool {
-    for value in node.props.values {
-        if let text = value.stringValue, text.localizedCaseInsensitiveContains(needle) { return true }
-        if value.nodesValue.contains(where: { contains(needle, in: $0) }) { return true }
+func rows(in frame: PluginFrame) -> Int {
+    switch frame.screen {
+    case .list(let list): list.sections.reduce(0) { $0 + $1.rows.count }
+    case .grid(let grid): grid.sections.reduce(0) { $0 + $1.rows.count }
+    case .menuBar(let menu): menu.items.count
+    case .form(let form): form.fields.count
+    case .detail: 1
+    case .unsupported: 0
     }
-    return node.children.contains { contains(needle, in: $0) }
 }
 
-// MARK: - Engines
+// MARK: - The command
 
 let benchRoot = URL(filePath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
     .deletingLastPathComponent()
@@ -127,63 +127,19 @@ let repository = benchRoot.appending(path: "../..").standardized
 
 /// One command, ready to launch any number of times.
 @MainActor
-protocol Subject {
-    var command: ExtensionCommand { get }
-    func makeRuntime(host: BenchHost) -> any ExtensionCommandRuntime
-    func launch(_ runtime: any ExtensionCommandRuntime, session: String) async throws
-}
-
-@MainActor
-struct JavaScriptSubject: Subject {
-    let owner: InstalledExtension
-    let command: ExtensionCommand
-    let preferences: [String: ExtensionPreferenceValue]
-
-    init(directory: URL, command name: String, preferences overrides: [String: ExtensionPreferenceValue]) throws {
-        let manifest = try ExtensionManifest.load(directory: directory)
-        guard let command = manifest.commands.first(where: { $0.name == name }) else {
-            throw PluginSessionError.internal("no command \(name)")
-        }
-        owner = InstalledExtension(manifest: manifest, directory: directory)
-        self.command = command
-        var preferences: [String: ExtensionPreferenceValue] = [:]
-        for schema in manifest.preferences + command.preferences {
-            preferences[schema.name] = schema.effectiveDefault
-        }
-        self.preferences = preferences.merging(overrides) { $1 }
-    }
-
-    func makeRuntime(host: BenchHost) -> any ExtensionCommandRuntime {
-        ExtensionRuntime(
-            hostAPI: host, runtimeURL: repository.appending(path: "Tinycast/Resources/RaycastRuntime.generated.js"))
-    }
-
-    func launch(_ runtime: any ExtensionCommandRuntime, session: String) async throws {
-        try await runtime.boot(config: .current(supportDirectory: FileManager.default.temporaryDirectory))
-        let context = ExtensionLaunchContext(
-            extensionName: owner.manifest.name, extensionTitle: owner.manifest.title, commandName: command.name,
-            commandMode: command.mode, assetsPath: owner.directory.appending(path: "assets").path,
-            supportPath: FileManager.default.temporaryDirectory.path, preferences: preferences, caches: [:],
-            arguments: [:], isDarkAppearance: false)
-        try await runtime.launch(session: session, owner: owner, command: command, context: context)
-    }
-}
-
-@MainActor
-struct ScriftSubject: Subject {
+struct Subject {
     let manifest: PluginManifest
     let directory: URL
-    let owner: InstalledExtension
-    let command: ExtensionCommand
+    let command: PluginCommand
     let kit: PluginSources
     let cache: ScriftModuleCache
-    let storage: ExtensionStorage
-    let preferences: [String: ExtensionPreferenceValue]
+    let storage = PluginMemoryStorage()
+    let preferences: [String: PluginValue]
     let helper: PluginHelperClient?
 
     init(
         directory: URL, command name: String, cache: ScriftModuleCache, manifestCache: URL?,
-        preferences overrides: [String: ExtensionPreferenceValue], helper: PluginHelperClient? = nil
+        preferences overrides: [String: PluginValue], helper: PluginHelperClient? = nil
     ) throws {
         self.helper = helper
         let description = try PluginSources.read(
@@ -192,23 +148,20 @@ struct ScriftSubject: Subject {
         let text = try String(contentsOf: directory.appending(path: "Manifest.swift"), encoding: .utf8)
         // As the catalog reads it: from its cache once it has run, so an unchanged manifest doesn't run.
         manifest = try PluginManifestReader.read(text, description: description, cache: manifestCache).manifest.get()
-        guard let extensionManifest = manifest.extensionManifest(),
-            let command = extensionManifest.commands.first(where: { $0.name == name })
-        else { throw PluginSessionError.internal("no command \(name)") }
+        guard let command = manifest.commands.first(where: { $0.name == name }) else {
+            throw PluginSessionError.internal("no command \(name)")
+        }
         self.directory = directory
-        owner = InstalledExtension(manifest: extensionManifest, directory: directory, engine: .plugin)
         self.command = command
         self.cache = cache
-        storage = ExtensionStorage(
-            directory: FileManager.default.temporaryDirectory.appending(path: "plugin-bench-storage-\(UUID())"))
-        var preferences: [String: ExtensionPreferenceValue] = [:]
-        for schema in extensionManifest.preferences + command.preferences {
-            preferences[schema.name] = schema.effectiveDefault
+        var preferences: [String: PluginValue] = [:]
+        for preference in manifest.preferences + (command.preferences ?? []) {
+            if let value = preference.defaultValue { preferences[preference.name] = value }
         }
         self.preferences = preferences.merging(overrides) { $1 }
     }
 
-    func makeRuntime(host: BenchHost) -> any ExtensionCommandRuntime {
+    func makeRuntime(host: BenchHost) -> any PluginRuntime {
         if let helper {
             return RemotePluginRuntime(
                 client: helper, plugin: manifest, directory: directory, storage: storage, hostAPI: host,
@@ -220,32 +173,30 @@ struct ScriftSubject: Subject {
             moduleCache: cache, kitSources: { kit })
     }
 
-    func launch(_ runtime: any ExtensionCommandRuntime, session: String) async throws {
-        try await runtime.boot(config: .current(supportDirectory: FileManager.default.temporaryDirectory))
-        let context = ExtensionLaunchContext(
-            extensionName: manifest.hostName, extensionTitle: manifest.title, commandName: command.name,
-            commandMode: command.mode, assetsPath: "", supportPath: "", preferences: preferences, caches: [:],
-            arguments: [:], isDarkAppearance: false)
-        try await runtime.launch(session: session, owner: owner, command: command, context: context)
+    func launch(_ runtime: any PluginRuntime, session: String) async throws {
+        let launch = PluginLaunch(
+            commandName: command.name, isBackground: false, arguments: [:], preferences: preferences,
+            fallbackText: nil, launchContext: [:], isDarkAppearance: false)
+        try await runtime.launch(session: session, launch: launch)
     }
 }
 
 // MARK: - The run
 
-/// When a launch counts as done: a view once it shows `needle` or `items` items, a no-view
-/// command once it finishes.
+/// When a launch counts as done: a view once its frame shows `needle` or `items` rows, an action
+/// once it finishes.
 struct Goal {
     var needle: String?
     var items = 1
 }
 
-func environmentPreferences() -> [String: ExtensionPreferenceValue] {
+func environmentPreferences() -> [String: PluginValue] {
     guard let raw = ProcessInfo.processInfo.environment["BENCH_PREFS"],
         let json = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any]
     else { return [:] }
     return json.compactMapValues { value in
-        if let flag = value as? Bool { return .bool(flag) }
-        if let text = value as? String { return .string(text) }
+        if let flag = value as? Bool { return PluginValue.bool(flag) }
+        if let text = value as? String { return PluginValue.string(text) }
         return nil
     }
 }
@@ -259,7 +210,7 @@ func emit(_ object: [String: Any]) {
 func bench() async {
     let arguments = CommandLine.arguments
     guard arguments.count >= 5, let iterations = Int(arguments[4]) else {
-        print("usage: plugin-bench <js|scrift|helper> <directory> <command> <iterations> [cache directory]")
+        print("usage: plugin-bench <scrift|helper> <directory> <command> <iterations> [cache directory]")
         exit(2)
     }
     let engine = arguments[1]
@@ -275,25 +226,20 @@ func bench() async {
     let processBaseline = footprint()
     let setupStarted = ContinuousClock.now
     let setupCPU = cpuSeconds()
-    let subject: any Subject
+    let subject: Subject
     var helper: PluginHelperClient?
     do {
-        if engine == "js" {
-            subject = try JavaScriptSubject(
-                directory: directory, command: arguments[3], preferences: environmentPreferences())
-        } else {
-            let cacheDirectory = arguments.count > 5 ? URL(filePath: arguments[5]) : nil
-            if engine == "helper" {
-                helper = PluginHelperClient(
-                    executable: Bundle.main.executableURL!.deletingLastPathComponent().appending(path: "plugin-helper"),
-                    cacheDirectory: cacheDirectory
-                        ?? FileManager.default.temporaryDirectory.appending(path: "plugin-bench-cache-\(UUID())"))
-            }
-            subject = try ScriftSubject(
-                directory: directory, command: arguments[3], cache: ScriftModuleCache(directory: cacheDirectory),
-                manifestCache: cacheDirectory?.appending(path: "Manifests"), preferences: environmentPreferences(),
-                helper: helper)
+        let cacheDirectory = arguments.count > 5 ? URL(filePath: arguments[5]) : nil
+        if engine == "helper" {
+            helper = PluginHelperClient(
+                executable: Bundle.main.executableURL!.deletingLastPathComponent().appending(path: "plugin-helper"),
+                cacheDirectory: cacheDirectory
+                    ?? FileManager.default.temporaryDirectory.appending(path: "plugin-bench-cache-\(UUID())"))
         }
+        subject = try Subject(
+            directory: directory, command: arguments[3], cache: ScriftModuleCache(directory: cacheDirectory),
+            manifestCache: cacheDirectory?.appending(path: "Manifests"), preferences: environmentPreferences(),
+            helper: helper)
     } catch {
         print("setup failed: \(error)")
         exit(1)
@@ -329,7 +275,7 @@ func bench() async {
         var reachedGoal = false
         func done() -> Bool {
             if recorder.failure != nil || launchError != nil { return true }
-            if subject.command.mode != .view { return recorder.finished }
+            if subject.command.mode == .action { return recorder.finished }
             if recorder.renders != checkedRenders {
                 checkedRenders = recorder.renders
                 reachedGoal = goalReached()
@@ -337,44 +283,23 @@ func bench() async {
             return reachedGoal
         }
         func goalReached() -> Bool {
-            guard let root = recorder.tree?.activeRoot else { return false }
-            if let needle = goal.needle { return contains(needle, in: root) }
-            return items(in: root) >= goal.items
+            guard let frame = recorder.frame else { return false }
+            if let needle = goal.needle { return recorder.json.localizedCaseInsensitiveContains(needle) }
+            return rows(in: frame) >= goal.items
         }
-        // The palette reports an uncontrolled dropdown's opening choice once it appears.
-        var seeded = false
         var polls = 0
         while !done(), ContinuousClock.now - started < timeout {
-            if !seeded, let tree = recorder.tree,
-                let accessory = ExtensionSearchAccessory(node: tree.activeRoot?.node("searchBarAccessory"))
-            {
-                seeded = true
-                if accessory.controlledValue == nil, let value = accessory.initialValue(stored: nil),
-                    let handler = accessory.onChange
-                {
-                    await runtime.dispatch(
-                        session: session, handler: handler, payload: ExtensionJSON.string(from: [value]))
-                }
-            }
             polls += 1
             if polls % 20 == 0 { maxThreads = max(maxThreads, threadCount()) }
             try? await Task.sleep(for: .milliseconds(1))
         }
-        if subject.command.mode != .view { await runtime.drainHostCalls() }
+        if subject.command.mode == .action { await runtime.drainHostCalls() }
         let ended = ContinuousClock.now
         let cpuDone = cpuSeconds()
         let atContent = footprint().current
         maxThreads = max(maxThreads, threadCount())
         let reached = done() && recorder.failure == nil && launchError == nil
-        if environment["BENCH_DUMP"] != nil, let root = recorder.tree?.activeRoot {
-            var types: [String: Int] = [:]
-            func walk(_ node: RenderNode) {
-                types[node.type, default: 0] += 1
-                node.children.forEach(walk)
-            }
-            walk(root)
-            print("DUMP \(types) \(root.props.keys.sorted()) \(host.log.suffix(6))")
-        }
+        if environment["BENCH_DUMP"] != nil { print("DUMP \(recorder.json) \(host.log.suffix(6))") }
 
         await runtime.stop(session: session)
         runtime.shutdown()
@@ -390,6 +315,9 @@ func bench() async {
             "content_s": seconds(ended - started),
             "cpu_s": cpuDone - cpuBefore,
             "renders": recorder.renders,
+            "frame_bytes": recorder.frameBytes.last ?? 0,
+            "frame_bytes_max": recorder.frameBytes.max() ?? 0,
+            "encode_s": recorder.encodeSeconds.max() ?? 0,
             "footprint_during": atContent - before,
             "footprint_retained": after - baseline.current,
             "helper_footprint": helper?.footprint ?? 0,

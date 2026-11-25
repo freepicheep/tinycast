@@ -20,10 +20,9 @@ enum PluginCapabilities {
         ScriftHostModule(
             "_TinycastHost",
             exports: [
-                PluginNode.self, PluginValue.self, PluginLaunch.self, PluginEnvironment.self, PluginOAuthRequest.self,
-                PluginOAuthTokens.self,
-                PluginApplication.self
-            ])
+                PluginValue.self, PluginLaunch.self, PluginEnvironment.self, PluginOAuthRequest.self,
+                PluginOAuthTokens.self, PluginApplication.self
+            ] + PluginProtocolVersion.contractTypes)
     }
 
     static var selectionHost: ScriftHostModule {
@@ -34,7 +33,7 @@ enum PluginCapabilities {
     /// plugin calls `selectedText()` as a function and the host knows whose session asks. A context
     /// holds its modules weakly, so the caller keeps the module until the plugin that imports it loads.
     @MainActor
-    static func loadSelection(into context: ScriftContext, hostAPI: ExtensionHostAPI) throws -> ScriftModule {
+    static func loadSelection(into context: ScriftContext, hostAPI: any PluginHostAPI) throws -> ScriftModule {
         let module = try context.load(
             files: [SourceFile(name: "Selection.swift", text: selectionSource)], moduleName: "Selection")
         try module.run(limits: ScriftPluginRuntime.limits)
@@ -197,21 +196,19 @@ enum PluginNetworkError: Error, CustomStringConvertible {
 @ScriftExport(as: "_SelectionHost")
 @MainActor
 final class PluginSelection {
-    private let hostAPI: ExtensionHostAPI
+    private let hostAPI: any PluginHostAPI
 
-    fileprivate init(hostAPI: ExtensionHostAPI) {
+    fileprivate init(hostAPI: any PluginHostAPI) {
         self.hostAPI = hostAPI
     }
 
     func text() async throws -> String {
-        let json = try await hostAPI.perform(api: "system", method: "selectedText", arguments: [])
-        return RenderValue.arguments(from: "[\(json)]").first?.stringValue ?? ""
+        guard case .text(let text) = try await hostAPI.perform(.selectedText) else { return "" }
+        return text
     }
 
     func finderItems() async throws -> [URL] {
-        let json = try await hostAPI.perform(api: "system", method: "selectedFinderItems", arguments: [])
-        return RenderValue.arguments(from: json).compactMap {
-            $0.objectValue?["path"]?.stringValue.map { URL(filePath: $0) }
-        }
+        guard case .texts(let paths) = try await hostAPI.perform(.selectedFinderItems) else { return [] }
+        return paths.map { URL(filePath: $0) }
     }
 }

@@ -25,45 +25,47 @@ struct TranslateForm: View {
         return Form {
             TextEditor("Text", text: textBinding)
                 .id("text")
-                .autoFocus()
+                .defaultFocus()
             Picker("From", selection: fromBinding(detected)) {
                 if let detected {
-                    Choice(languageName(detected) + " (Auto-detect)", value: detected)
+                    Text(languageName(detected) + " (Auto-detect)").tag(detected)
                 }
-                for language in languages {
-                    Choice(language.name, value: language.code)
+                ForEach(languages, id: \.code) { language in
+                    Text(language.name).tag(language.code)
                 }
             }
             .id("language_from")
             Picker("To", selection: toBinding) {
-                for language in languages where language.code != autoDetect {
-                    Choice(language.name, value: language.code)
+                ForEach(languages.filter { $0.code != autoDetect }, id: \.code) { language in
+                    Text(language.name).tag(language.code)
                 }
             }
             .id("language_to")
-            TextEditor("Translation", text: .constant(result?.translatedText ?? ""), prompt: "Translation")
+            TextField("Translation", text: .constant(result?.translatedText ?? ""), prompt: "Translation", axis: .vertical)
                 .id("result")
-            Text(result?.pronunciation ?? "", title: "Pronunciation")
+            LabeledContent("Pronunciation", value: result?.pronunciation ?? "")
         }
         .loading(isLoading)
-        .actions {
-            ActionSection("Generals") {
+        .toolbar {
+            Section("Generals") {
                 if pastesFirst() {
-                    PasteButton("Paste Translated", text: (result?.translatedText ?? ""))
-                    CopyButton("Copy Translated", text: (result?.translatedText ?? "")).keyboardShortcut("c", modifiers: [.command, .shift])
+                    PasteButton("Paste Translated", text: result?.translatedText ?? "")
+                    CopyButton("Copy Translated", text: result?.translatedText ?? "")
+                        .keyboardShortcut("c", modifiers: [.command, .shift])
                 } else {
-                    CopyButton("Copy Translated", text: (result?.translatedText ?? "")).keyboardShortcut("c", modifiers: [.command, .shift])
-                    PasteButton("Paste Translated", text: (result?.translatedText ?? ""))
+                    CopyButton("Copy Translated", text: result?.translatedText ?? "")
+                        .keyboardShortcut("c", modifiers: [.command, .shift])
+                    PasteButton("Paste Translated", text: result?.translatedText ?? "")
                 }
                 CopyButton("Copy Text", text: text).keyboardShortcut(".", modifiers: [.command, .shift])
                 CopyButton("Copy Pronunciation", text: result?.pronunciation ?? "")
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                 Link("Open in Google Translate", destination: googleTranslateURL(text, from: set.from, to: langTo))
-                    .keyboardShortcut("return", modifiers: [.option])
+                    .keyboardShortcut(.return, modifiers: .option)
                 NavigationLink("Manage Language Sets…", systemImage: "pencil") { LanguageSetManager() }
                     .keyboardShortcut("l")
             }
-            ActionSection("Settings") {
+            Section("Settings") {
                 Button(languageName(detected ?? set.from) + " <-> " + languageName(langTo)) {
                     selectedStored = LanguageSet(from: langTo, to: [detected ?? set.from]).stored
                     translate()

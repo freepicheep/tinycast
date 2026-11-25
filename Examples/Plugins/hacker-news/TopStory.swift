@@ -7,16 +7,16 @@ struct TopStory: View {
     @State private var isLoading = true
 
     var body: some View {
-        MenuBarExtra(stories.first.map { "▲ \($0.points ?? 0)" }, systemImage: "newspaper", tooltip: "Hacker News") {
+        MenuBarExtra(stories.first.map { "▲ \($0.points ?? 0)" }, systemImage: "newspaper") {
             ForEach(stories.prefix(5)) { story in
-                MenuItem(story.title ?? "Untitled", subtitle: story.site) {
-                    open(story.storyURL)
-                }
-                .alternate(MenuItem("Comments: \(story.title ?? "Untitled")") { open(story.discussionURL) })
+                Link(story.title ?? "Untitled", destination: story.storyURL)
+                    .subtitle(story.site ?? "")
+                    .alternate { Link("Comments: \(story.title ?? "Untitled")", destination: story.discussionURL) }
             }
             Divider()
-            MenuItem("Open Hacker News", systemImage: "safari") { open("https://news.ycombinator.com") }
+            Link("Open Hacker News", destination: "https://news.ycombinator.com")
         }
+        .help("Hacker News")
         .loading(isLoading)
         .task {
             stories = (try? await Feed.frontPage.stories()) ?? []

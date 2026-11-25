@@ -42,7 +42,7 @@ func encodeSets(_ sets: [LanguageSet]) -> String {
 
 /// The pair from Settings: the source and the primary and secondary targets.
 func preferencesSet() -> LanguageSet {
-    let values = getPreferenceValues()
+    let values = Plugin.preferences
     func text(_ name: String, _ fallback: String) -> String {
         if case .string(let value) = values[name], !value.isEmpty { return value }
         return fallback
@@ -51,7 +51,7 @@ func preferencesSet() -> LanguageSet {
 }
 
 func preference(_ name: String) -> Bool {
-    if case .bool(let value) = getPreferenceValues()[name] { return value }
+    if case .bool(let value) = Plugin.preferences[name] { return value }
     return name == "autoInput"
 }
 
@@ -83,6 +83,6 @@ let debounceMilliseconds = 250
 
 /// True when the Default Action preference puts Paste before Copy.
 func pastesFirst() -> Bool {
-    if case .string(let action) = getPreferenceValues()["defaultAction"] { return action == "paste" }
+    if case .string(let action) = Plugin.preferences["defaultAction"] { return action == "paste" }
     return false
 }

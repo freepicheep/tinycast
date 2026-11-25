@@ -1,59 +1,43 @@
 import Foundation
 
-/// What a plugin session reads and writes synchronously, as a getter must: the app's
-/// `ExtensionStorage` when the session runs in the app, or `PluginStorageMirror`, the plugin
-/// helper's copy of one plugin's part of it, whose writes go back to the app. The app stays the
-/// only writer of the files, so a preference set in Settings can't race a plugin's own write.
+/// What a plugin session reads and writes synchronously, as a getter must: each `@AppStorage`
+/// value as JSON text, by key. The app's `PluginStore` when the session runs in the app, or
+/// `PluginStorageMirror`, the plugin helper's copy of one plugin's part of it, whose writes go back
+/// to the app. The app stays the only writer of the files.
 @MainActor
 protocol PluginStorage: AnyObject {
-    func localStorageValue(extension name: String, key: String) -> ExtensionStorage.StoredValue?
-    func allLocalStorage(extension name: String) -> [String: ExtensionStorage.StoredValue]
-    func setLocalStorage(extension name: String, key: String, value: ExtensionStorage.StoredValue)
-    func removeLocalStorage(extension name: String, key: String)
-    func clearLocalStorage(extension name: String)
-    func formValues(extension name: String, command: String) -> [String: String]
-    func setFormValues(extension name: String, command: String, values: [String: String])
-    func caches(extension name: String) -> [String: [String: String]]
-    func setCache(extension name: String, namespace: String, key: String?, value: String?)
+    func value(plugin: String, key: String) -> String?
+    func values(plugin: String) -> [String: String]
+    /// Nil removes the key.
+    func setValue(_ value: String?, plugin: String, key: String)
+    func clearValues(plugin: String)
 }
 
-extension ExtensionStorage: PluginStorage {}
-
-/// One plugin's storage as a launch found it, and every write since. Sent to the helper with the
-/// launch; the helper's writes come back as `PluginStorageWrite`s, applied in order.
+/// One plugin's storage as a launch found it. Sent to the helper with the launch; the helper's
+/// writes come back as `PluginStorageWrite`s, applied in order.
 struct PluginStorageSnapshot: Codable, Sendable, Equatable {
-    var localStorage: [String: ExtensionStorage.StoredValue] = [:]
-    var caches: [String: [String: String]] = [:]
-    var formValues: [String: [String: String]] = [:]
+    var values: [String: String] = [:]
 
     @MainActor
-    init(of name: String, in storage: ExtensionStorage) {
-        localStorage = storage.allLocalStorage(extension: name)
-        caches = storage.caches(extension: name)
-        formValues = storage.formValuesByCommand(extension: name)
+    init(of plugin: String, in storage: any PluginStorage) {
+        values = storage.values(plugin: plugin)
     }
 
-    init() {}
+    init(values: [String: String] = [:]) {
+        self.values = values
+    }
 }
 
-/// A write a plugin made in the helper, for the app to make to its `ExtensionStorage`.
+/// A write a plugin made in the helper, for the app to make to its own storage.
 enum PluginStorageWrite: Codable, Sendable, Equatable {
-    case setLocal(key: String, value: ExtensionStorage.StoredValue)
-    case removeLocal(key: String)
-    case clearLocal
-    case setFormValues(command: String, values: [String: String])
-    case setCache(namespace: String, key: String?, value: String?)
+    case set(key: String, value: String?)
+    case clear
 
     @MainActor
-    func apply(to storage: ExtensionStorage, extension name: String) {
+    func apply(to storage: any PluginStorage, plugin: String) {
         switch self {
-        case .setLocal(let key, let value): storage.setLocalStorage(extension: name, key: key, value: value)
-        case .removeLocal(let key): storage.removeLocalStorage(extension: name, key: key)
-        case .clearLocal: storage.clearLocalStorage(extension: name)
-        case .setFormValues(let command, let values):
-            storage.setFormValues(extension: name, command: command, values: values)
-        case .setCache(let namespace, let key, let value):
-            storage.setCache(extension: name, namespace: namespace, key: key, value: value)
+        case .set(let key, let value): storage.setValue(value, plugin: plugin, key: key)
+        case .clear: storage.clearValues(plugin: plugin)
         }
     }
 }
@@ -70,50 +54,30 @@ final class PluginStorageMirror: PluginStorage {
         self.send = send
     }
 
-    func localStorageValue(extension name: String, key: String) -> ExtensionStorage.StoredValue? {
-        snapshot.localStorage[key]
+    func value(plugin: String, key: String) -> String? { snapshot.values[key] }
+
+    func values(plugin: String) -> [String: String] { snapshot.values }
+
+    func setValue(_ value: String?, plugin: String, key: String) {
+        snapshot.values[key] = value
+        send(.set(key: key, value: value))
     }
 
-    func allLocalStorage(extension name: String) -> [String: ExtensionStorage.StoredValue] {
-        snapshot.localStorage
+    func clearValues(plugin: String) {
+        snapshot.values = [:]
+        send(.clear)
     }
+}
 
-    func setLocalStorage(extension name: String, key: String, value: ExtensionStorage.StoredValue) {
-        snapshot.localStorage[key] = value
-        send(.setLocal(key: key, value: value))
-    }
+/// Storage that lives only as long as the object: for checks and tools, not the app.
+@MainActor
+final class PluginMemoryStorage: PluginStorage {
+    private var stored: [String: [String: String]] = [:]
 
-    func removeLocalStorage(extension name: String, key: String) {
-        snapshot.localStorage.removeValue(forKey: key)
-        send(.removeLocal(key: key))
-    }
+    init() {}
 
-    func clearLocalStorage(extension name: String) {
-        snapshot.localStorage = [:]
-        send(.clearLocal)
-    }
-
-    func formValues(extension name: String, command: String) -> [String: String] {
-        snapshot.formValues[command] ?? [:]
-    }
-
-    func setFormValues(extension name: String, command: String, values: [String: String]) {
-        snapshot.formValues[command, default: [:]].merge(values) { $1 }
-        send(.setFormValues(command: command, values: values))
-    }
-
-    func caches(extension name: String) -> [String: [String: String]] {
-        snapshot.caches
-    }
-
-    func setCache(extension name: String, namespace: String, key: String?, value: String?) {
-        if let key {
-            var bucket = snapshot.caches[namespace] ?? [:]
-            if let value { bucket[key] = value } else { bucket.removeValue(forKey: key) }
-            snapshot.caches[namespace] = bucket
-        } else {
-            snapshot.caches[namespace] = [:]
-        }
-        send(.setCache(namespace: namespace, key: key, value: value))
-    }
+    func value(plugin: String, key: String) -> String? { stored[plugin]?[key] }
+    func values(plugin: String) -> [String: String] { stored[plugin] ?? [:] }
+    func setValue(_ value: String?, plugin: String, key: String) { stored[plugin, default: [:]][key] = value }
+    func clearValues(plugin: String) { stored[plugin] = nil }
 }

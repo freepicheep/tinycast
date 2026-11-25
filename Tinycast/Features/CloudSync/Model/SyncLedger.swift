@@ -45,6 +45,29 @@ struct SyncLedger: Codable, Equatable, Sendable {
 
     var isEmpty: Bool { entries.isEmpty && joined.isEmpty }
 
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case entries, joined
+    }
+
+    /// An entry or category of a source this build no longer has is dropped, not the whole ledger.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        entries = try container.decode([String: Lossy<Entry>].self, forKey: .entries).compactMapValues(
+            \.value)
+        joined = Set(
+            try container.decode([String].self, forKey: .joined).compactMap(SyncCategory.init(rawValue:)))
+    }
+
+    private struct Lossy<Value: Decodable>: Decodable {
+        let value: Value?
+
+        init(from decoder: any Decoder) throws {
+            value = try? Value(from: decoder)
+        }
+    }
+
     func entry(named name: String) -> Entry? { entries[name] }
 
     func isJoined(_ source: SyncSourceID, key: String) -> Bool {

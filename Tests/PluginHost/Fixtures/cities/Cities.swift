@@ -1,19 +1,23 @@
 import Tinycast
 
-struct City {
+struct City: Identifiable {
     let name: String
     let country: String
+
+    var id: String { name }
 }
 
 struct CityDetail: View {
     let city: City
     @State var visits = 0
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         Detail(markdown: "# \(city.name)\nVisited \(visits) times")
             .metadata {
                 LabeledContent("Country", value: city.country)
             }
-            .actions {
+            .toolbar {
                 Button("Visit") { visits += 1 }
                 Button("Back") { dismiss() }
             }
@@ -33,13 +37,14 @@ struct Cities: View {
     var body: some View {
         List {
             if !pinned.isEmpty {
-                Section("Pinned") { Item(pinned, systemImage: "pin").tint(.orange) }
+                Section("Pinned") { Label(pinned, systemImage: "pin").foregroundStyle(.orange) }
             }
             Section("Cities") {
                 ForEach(matching) { city in
-                    Item(city.name, subtitle: city.country, systemImage: "building.2")
+                    Label(city.name, systemImage: "building.2")
+                        .subtitle(city.country)
                         .badge(city.name.count)
-                        .actions {
+                        .contextMenu {
                             CopyButton(text: city.name)
                             Button("Pin") { pinned = city.name }
                                 .keyboardShortcut("p", modifiers: [.command, .shift])

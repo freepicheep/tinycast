@@ -22,7 +22,7 @@ struct RootPaletteView: View {
     @Environment(UninstallSession.self) private var uninstall
     @Environment(QuicklinkStore.self) private var quicklinks
     @Environment(SnippetsStore.self) private var snippets
-    @Environment(ExtensionManager.self) private var extensions
+    @Environment(PluginHost.self) private var pluginHost
     @Environment(AppSettings.self) private var settings
     @Environment(\.metrics) private var metrics
     @Environment(\.openURL) private var openURL
@@ -131,17 +131,15 @@ struct RootPaletteView: View {
             return CalculatorHistoryScreen(
                 history: calcHistory, currencyRates: currencyRates, core: core, vm: vm,
                 openActions: openActions)
-        case .extensionCommand:
-            return ExtensionCommandScreen(
-                screen: extensionScreen, extensions: extensions, vm: vm, openActions: openActions)
+        case .pluginCommand:
+            return PluginCommandScreen(
+                layout: pluginLayout, host: pluginHost, vm: vm, openActions: openActions)
         }
     }
 
-    private var extensionScreen: ExtensionScreen {
-        guard vm.mode == .extensionCommand, case .rendered(let tree) = extensions.state else {
-            return .empty
-        }
-        return ExtensionScreen(tree: tree, query: vm.query)
+    private var pluginLayout: PluginScreenLayout {
+        guard vm.mode == .pluginCommand, let frame = pluginHost.frame else { return .empty }
+        return PluginScreenLayout(screen: frame.screen, query: vm.query)
     }
 
     private func handleFormReturn(_ press: KeyPress) -> KeyPress.Result {
@@ -152,8 +150,8 @@ struct RootPaletteView: View {
         return .handled
     }
 
-    private var isExtensionForm: Bool {
-        vm.mode == .extensionCommand && extensionScreen.kind == .form
+    private var isPluginForm: Bool {
+        vm.mode == .pluginCommand && pluginLayout.isForm
     }
 
     /// Selection clamped into the results: one source for highlight, preview and activation.
@@ -312,8 +310,8 @@ struct RootPaletteView: View {
                 }
             return headerMenu(
                 inputOptions, width: width, extraRowsHeight: metrics.size.formMenuExtraRowsHeight)
-        case .extensionAccessory:
-            return extensionCommandScreen?.searchAccessoryMenu(
+        case .pluginPicker:
+            return pluginCommandScreen?.toolbarPickerMenu(
                 searchQuery: ActionMenuSearchQuery(vm.menuQuery),
                 menuSelection: $menuSelection, onActivate: activateMenuItem)
         case nil: return nil
@@ -325,7 +323,7 @@ struct RootPaletteView: View {
         let screen = screen
         let count = screen.rows.count
         let sel = selection(count: count)
-        // An extension's Form has no rows to count, but ↵ still acts.
+        // A plugin's form has no rows to count, but ↵ still acts.
         let showActionGroup =
             (count > 0 || screen.actsWithoutRows)
             && screen.hasPrimaryAction(at: sel)
@@ -441,17 +439,10 @@ struct RootPaletteView: View {
                 if vm.mode == .dictionary { dictionary.lookUp(vm.query) }
                 if vm.mode == .menuSearch { menuSearch.filter(vm.query) }
                 if vm.mode == .switchWindows { windowSwitch.filter(vm.query) }
-                // A command that took over the search text filters its own list.
-                if vm.mode == .extensionCommand, let handler = extensionScreen.searchTextHandler {
-                    extensions.dispatch(handler: handler, arguments: [vm.query])
-                }
             }
-            // Anything typed while the command was still starting predates its handler.
-            .onChange(of: extensionScreen.searchTextHandler) { previous, handler in
-                guard previous == nil, let handler, !vm.query.isEmpty else { return }
-                extensions.dispatch(handler: handler, arguments: [vm.query])
-            }
-            .modifier(ExtensionSelectionForwarder(screen: extensionScreen, selection: vm.selection))
+            .modifier(
+                PluginPaletteBindings(layout: pluginLayout, selection: vm.selection, host: pluginHost)
+            )
             // A narrower list means the old index points at a different row, or at none.
             .onChange(of: vm.clipboardFilter) { land(restoringSelection: true) }
             // The filter is part of the query, so narrowing re-runs it rather than thinning rows.
@@ -487,8 +478,8 @@ struct RootPaletteView: View {
                 if vm.mode != .meetingDetails { calendarStore.clearDetails() }
                 if vm.mode != .rooms, vm.mode != .roomWindows { core.roomCoordinator.screensDidClose() }
                 // Leaving the screen any other way than Escape still ends the command's session.
-                if vm.mode != .extensionCommand, extensions.running != nil {
-                    Task { await extensions.stop() }
+                if vm.mode != .pluginCommand, pluginHost.running != nil {
+                    Task { await pluginHost.stop() }
                 }
             }
             // `prepare` may change nothing else, so this still lands the list as freshly opened.
@@ -598,7 +589,7 @@ struct RootPaletteView: View {
                     return .handled
                 }
                 if vm.mode.isNativeEditor { return .ignored }
-                if isExtensionForm { return handleFormReturn(press) }
+                if isPluginForm { return handleFormReturn(press) }
                 let screen = screen
                 guard command || option else {
                     guard !vm.isComposing else { return .ignored }
@@ -638,8 +629,8 @@ struct RootPaletteView: View {
                 case .clearQuery:
                     if settings.compactMode, vm.mode == .launcher { vm.forceExpanded = true }
                     vm.query = ""
-                case .exitExtensionScreen:
-                    core.extensionCoordinator.exitExtensionScreen()
+                case .exitPluginScreen:
+                    core.pluginCoordinator.exitCommandScreen()
                 case .goBack:
                     goBack()
                 case .collapsePalette:
@@ -661,8 +652,8 @@ struct RootPaletteView: View {
                 return .handled
             }
             .modifier(
-                ExtensionShortcutKeys(
-                    screen: { menuOpen ? nil : screen as? ExtensionCommandScreen }, selection: sel)
+                PluginShortcutKeys(
+                    screen: { menuOpen ? nil : screen as? PluginCommandScreen }, selection: sel)
             )
             .onKeyPress(phases: .down) { press in
                 guard press.modifiers.contains(.command),
@@ -864,13 +855,10 @@ struct RootPaletteView: View {
                         action: toggleAIReasoning)
                 }
             }
-            if !isCollapsed, let command = extensionCommandScreen,
-                let accessory = command.searchAccessory
-            {
+            if !isCollapsed, let command = pluginCommandScreen, let picker = command.toolbarPicker {
                 headerGutter(width: metrics.spacing.md)
-                command.searchAccessoryButton(
-                    accessory, isOpen: openMenu == .extensionAccessory,
-                    action: toggleExtensionSearchAccessory)
+                command.toolbarPickerButton(
+                    picker, isOpen: openMenu == .pluginPicker, action: togglePluginPicker)
             }
             if isCollapsed { UpdatePill() }
             // The slack above and below, so the pill stays concentric with the capsule.
@@ -884,9 +872,9 @@ struct RootPaletteView: View {
     }
 
     /// Mode-gated ahead of the cast, which would otherwise cost every other mode a list build.
-    private var extensionCommandScreen: ExtensionCommandScreen? {
-        guard vm.mode == .extensionCommand else { return nil }
-        return screen as? ExtensionCommandScreen
+    private var pluginCommandScreen: PluginCommandScreen? {
+        guard vm.mode == .pluginCommand else { return nil }
+        return screen as? PluginCommandScreen
     }
 
     /// Whichever screen offers one; the compact bar has no room for it.
@@ -960,8 +948,8 @@ struct RootPaletteView: View {
     private var searchPrompt: String {
         // Squeezed to the caret, the field has no room for a prompt; beside one it keeps it.
         if headerAccessory?.placement == .afterQuery, vm.mode != .ai { return "" }
-        if vm.mode == .extensionCommand, let placeholder = extensionScreen.searchPlaceholder {
-            return placeholder
+        if vm.mode == .pluginCommand, let prompt = pluginLayout.chrome?.search?.prompt {
+            return prompt
         }
         return vm.mode.placeholder
     }
@@ -1024,7 +1012,7 @@ struct RootPaletteView: View {
                 appMenuButton
                 UpdatePill()
             }
-            .modifier(ExtensionToastSlot(extensions: extensions, showing: vm.mode == .extensionCommand))
+            .modifier(PluginToastSlot(host: pluginHost, showing: vm.mode == .pluginCommand))
             if showActionGroup {
                 actionGroup(
                     pillLabel: pillLabel, formPrimaryShortcut: formPrimaryShortcut,
@@ -1120,9 +1108,9 @@ struct RootPaletteView: View {
     private func performFilterAction() -> Bool {
         switch PaletteFilterAction.resolve(
             collapsed: isCollapsed, mode: vm.mode,
-            commandHasAccessory: extensionCommandScreen?.searchAccessory != nil)
+            commandHasPicker: pluginCommandScreen?.toolbarPicker != nil)
         {
-        case .extensionAccessory: toggleExtensionSearchAccessory()
+        case .pluginPicker: togglePluginPicker()
         case .clipboardFilter: toggleClipboardFilter()
         case .fileSearchFilter: toggleFileSearchFilter()
         case .emojiCategory: toggleEmojiCategory()
@@ -1152,14 +1140,13 @@ struct RootPaletteView: View {
         open(.dictionaryScope, highlighting: active)
     }
 
-    private func toggleExtensionSearchAccessory() {
-        if openMenu == .extensionAccessory {
+    private func togglePluginPicker() {
+        if openMenu == .pluginPicker {
             closeMenus()
             return
         }
-        guard let accessory = extensionCommandScreen?.searchAccessory else { return }
-        let value = extensions.accessorySelection(accessory)
-        open(.extensionAccessory, highlighting: accessory.index(of: value))
+        guard let picker = pluginCommandScreen?.toolbarPicker else { return }
+        open(.pluginPicker, highlighting: picker.selection ?? 0)
     }
 
     private func toggleAIModel() {
@@ -1379,7 +1366,7 @@ struct RootPaletteView: View {
         case .inputOptions(let corner): corner
         case .clipboardFilter, .fileSearchFilter, .emojiCategory, .dictionaryScope, .aiModel,
             .aiReasoning,
-            .aiAttachments, .extensionAccessory:
+            .aiAttachments, .pluginPicker:
             .belowHeaderTrailing
         case nil: nil
         }
@@ -1552,9 +1539,9 @@ struct RootPaletteView: View {
         open(.argumentOptions, highlighting: 0)
     }
 
-    /// An extension keeps its own stack, so it can have a step back the palette cannot see.
+    /// A plugin keeps its own stack, so it can have a step back the palette cannot see.
     private var hasBackStep: Bool {
-        vm.canGoBack || (vm.mode == .extensionCommand && extensions.navigationDepth > 1)
+        vm.canGoBack || (vm.mode == .pluginCommand && (pluginHost.frame?.depth ?? 0) > 1)
     }
 
     /// Never promises a step the click does not take: a root screen closes rather than backs.
@@ -1581,8 +1568,8 @@ struct RootPaletteView: View {
             core.snippetCoordinator.cancelSnippetEditing()
             return
         }
-        if vm.mode == .extensionCommand {
-            core.extensionCoordinator.exitExtensionScreen()
+        if vm.mode == .pluginCommand {
+            core.pluginCoordinator.exitCommandScreen()
             return
         }
         if !vm.pop() { core.paletteCoordinator.hidePalette() }
@@ -1605,7 +1592,7 @@ struct RootPaletteView: View {
 /// The palette's in-window menus. One optional of these is the whole "only one is open" invariant.
 private enum OpenMenu: Equatable {
     case actions
-    case extensionAccessory
+    case pluginPicker
     case argumentOptions
     case inputOptions(MenuPanelCorner)
     case app

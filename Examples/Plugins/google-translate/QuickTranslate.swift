@@ -42,14 +42,13 @@ struct QuickTranslateResults: View {
         }
         .searchable(text: $text, prompt: "Enter text to translate")
         .loading(isLoading)
-        .showingDetail(showingDetail)
-        .searchBarAccessory(
-            Dropdown("Language", selection: $source) {
-                for language in languages {
-                    Choice(language.name, value: language.code)
+        .showsDetail(showingDetail)
+        .toolbar {
+            Picker("Language", selection: $source) {
+                ForEach(languages, id: \.code) { language in
+                    Text(language.name).tag(language.code)
                 }
-            })
-        .actions {
+            }
             NavigationLink("Translate to  ->  " + targets.map(languageName).joined(separator: " "), systemImage: "pencil") {
                 TargetLanguages()
             }
@@ -58,35 +57,40 @@ struct QuickTranslateResults: View {
         .task(id: text + "\n" + source + "\n" + targetsStored) { await load(targets) }
     }
 
-    private func row(_ result: Translation) -> Item {
+    private func row(_ result: Translation) -> some View {
         var markdown = result.translatedText + "\n\n\n"
         if let pronunciation = result.pronunciation {
             markdown += "```\n" + pronunciation + "\n```\n\n"
         }
         let from = languageName(result.langFrom)
         let to = languageName(result.langTo)
-        return Item(result.translatedText)
+        return Text(result.translatedText)
             .id(result.langTo)
-            .accessory(to, tooltip: from + " -> " + to)
+            .badge(to)
+            .help(from + " -> " + to)
             .detail {
                 Detail(markdown: markdown)
                     .metadata {
                         TagList("Source Language") {
-                            if source == autoDetect { Tag(languageName(autoDetect), color: Color(css: "#FECD57")) }
-                            Tag(from, color: Color(css: "#A0D468"))
+                            if source == autoDetect {
+                                Tag(languageName(autoDetect), color: Color(red: 254 / 255, green: 205 / 255, blue: 87 / 255))
+                            }
+                            Tag(from, color: Color(red: 160 / 255, green: 212 / 255, blue: 104 / 255))
                         }
                         TagList("Target Language") {
-                            Tag(to, color: Color(css: "#B3A5EF"))
+                            Tag(to, color: Color(red: 179 / 255, green: 165 / 255, blue: 239 / 255))
                         }
                     }
             }
-            .actions {
-                ActionSection {
+            .contextMenu {
+                Section {
                     if pastesFirst() {
                         PasteButton("Paste Translation", text: result.translatedText)
-                        CopyButton("Copy Translation", text: result.translatedText).keyboardShortcut("c", modifiers: [.command, .shift])
+                        CopyButton("Copy Translation", text: result.translatedText)
+                            .keyboardShortcut("c", modifiers: [.command, .shift])
                     } else {
-                        CopyButton("Copy Translation", text: result.translatedText).keyboardShortcut("c", modifiers: [.command, .shift])
+                        CopyButton("Copy Translation", text: result.translatedText)
+                            .keyboardShortcut("c", modifiers: [.command, .shift])
                         PasteButton("Paste Translation", text: result.translatedText)
                     }
                     Button("Toggle Full Text", systemImage: "text.alignleft") { showingDetail.toggle() }
@@ -95,7 +99,7 @@ struct QuickTranslateResults: View {
                         "Open in Google Translate",
                         destination: googleTranslateURL(text, from: result.langFrom, to: result.langTo)
                     )
-                    .keyboardShortcut("return", modifiers: [.option])
+                    .keyboardShortcut(.return, modifiers: .option)
                 }
             }
     }
@@ -150,10 +154,10 @@ struct TargetLanguages: View {
                 }
             }
             Section("Available Languages") {
-                for language in languages where language.code != autoDetect && !targets.contains(language.code) {
-                    Item(language.name, subtitle: language.code)
-                        .id(language.code)
-                        .actions {
+                ForEach(languages.filter { $0.code != autoDetect && !targets.contains($0.code) }, id: \.code) { language in
+                    Text(language.name)
+                        .subtitle(language.code)
+                        .contextMenu {
                             Button("Add", systemImage: "plus") {
                                 save(targets + [language.code])
                                 clearSearchBar()
@@ -166,33 +170,37 @@ struct TargetLanguages: View {
         .searchable(prompt: "Search languages")
     }
 
-    private func selectedRow(_ targets: [String], _ index: Int) -> Item {
+    @ViewBuilder
+    private func selectedRow(_ targets: [String], _ index: Int) -> some View {
         let code = targets[index]
-        let item = Item(languageName(code), subtitle: code).id("selected-" + code)
+        let row = Text(languageName(code)).subtitle(code).id("selected-" + code)
         // English alone stays: there is always one target.
-        if targets.count == 1 && code == "en" { return item }
-        return item.actions {
-            Button("Remove", systemImage: "minus", role: .destructive) {
-                var remaining = targets
-                remaining.remove(at: index)
-                save(remaining.isEmpty ? ["en"] : remaining)
-                clearSearchBar()
+        if targets.count == 1 && code == "en" {
+            row
+        } else {
+            row.contextMenu {
+                Button("Remove", systemImage: "minus", role: .destructive) {
+                    var remaining = targets
+                    remaining.remove(at: index)
+                    save(remaining.isEmpty ? ["en"] : remaining)
+                    clearSearchBar()
+                }
+                .keyboardShortcut("x", modifiers: .control)
+                Button("Move Up", systemImage: "arrow.up") {
+                    guard index > 0 else { return }
+                    var moved = targets
+                    moved.swapAt(index, index - 1)
+                    save(moved)
+                }
+                .keyboardShortcut(.upArrow, modifiers: .shift)
+                Button("Move Down", systemImage: "arrow.down") {
+                    guard index < targets.count - 1 else { return }
+                    var moved = targets
+                    moved.swapAt(index, index + 1)
+                    save(moved)
+                }
+                .keyboardShortcut(.downArrow, modifiers: .shift)
             }
-            .keyboardShortcut("x", modifiers: [.control])
-            Button("Move Up", systemImage: "arrow.up") {
-                guard index > 0 else { return }
-                var moved = targets
-                moved.swapAt(index, index - 1)
-                save(moved)
-            }
-            .keyboardShortcut("arrowUp", modifiers: [.shift])
-            Button("Move Down", systemImage: "arrow.down") {
-                guard index < targets.count - 1 else { return }
-                var moved = targets
-                moved.swapAt(index, index + 1)
-                save(moved)
-            }
-            .keyboardShortcut("arrowDown", modifiers: [.shift])
         }
     }
 

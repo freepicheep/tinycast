@@ -4,8 +4,8 @@ import os
 
 /// The app's end of the plugin helper, the process plugin code runs in (`PluginHelper`). It starts
 /// the helper on the first launch or scan, and again after the helper exits: when idle, when it
-/// grew, when it crashed, or when the watchdog ended it. Every runtime the Extensions host asks for
-/// is a `RemotePluginRuntime` whose session runs there.
+/// grew, when it crashed, or when the watchdog ended it. Every runtime the plugin host asks for is
+/// a `RemotePluginRuntime` whose session runs there.
 @MainActor
 final class PluginHelperClient {
     /// The helper must answer a ping within this, or it's taken for stuck and ended. Generous: a
@@ -135,32 +135,25 @@ final class PluginHelperClient {
         switch event {
         case .reply(let number, let reply):
             replies.removeValue(forKey: number)?.resume(returning: reply)
-        case .rendered(let id, let session, let tree):
-            runtimes[id]?.rendered(session: session, tree: tree)
+        case .rendered(let id, let session, let frame):
+            runtimes[id]?.rendered(session: session, frame: frame)
         case .failed(let id, let session, let message):
             runtimes[id]?.failed(session: session, message: message)
-        case .navigationDepth(let id, let session, let depth):
-            runtimes[id]?.navigationDepth(session: session, depth: depth)
         case .finished(let id, let session):
             runtimes[id]?.finished(session: session)
-        case .log(let id, let level, let message):
-            runtimes[id]?.log(level: level, message: message)
-        case .hostCall(let id, let call, let api, let method, let arguments):
+        case .hostCall(let id, let call, let hostCall):
             guard let runtime = runtimes[id] else {
-                send(
-                    .hostAnswer(
-                        call: call, result: nil,
-                        error: ExtensionHostError.noActiveExtension.localizedDescription))
+                send(.hostAnswer(call: call, answer: nil, error: PluginHostError.noSession.message))
                 return
             }
             Task {
                 do {
-                    let result = try await runtime.perform(api: api, method: method, arguments: arguments)
-                    self.send(.hostAnswer(call: call, result: result, error: nil))
+                    let answer = try await runtime.perform(hostCall)
+                    self.send(.hostAnswer(call: call, answer: answer, error: nil))
                 } catch {
                     self.send(
                         .hostAnswer(
-                            call: call, result: nil,
+                            call: call, answer: nil,
                             error: (error as? LocalizedError)?.errorDescription ?? String(describing: error)))
                 }
             }
@@ -218,25 +211,25 @@ final class PluginHelperClient {
     }
 }
 
-/// One plugin command whose session runs in the plugin helper. The Extensions host drives it as
-/// it drives any runtime; it forwards each call as a frame, and answers the helper's host calls
-/// and storage writes with the app's own `ExtensionHostAPI` and `ExtensionStorage`.
+/// One plugin command whose session runs in the plugin helper. The plugin host drives it as it
+/// drives any runtime; it forwards each call as a frame, and answers the helper's host calls and
+/// storage writes with the app's own `PluginHostAPI` and storage.
 @MainActor
-final class RemotePluginRuntime: ExtensionCommandRuntime {
+final class RemotePluginRuntime: PluginRuntime {
     private let client: PluginHelperClient
     private let plugin: PluginManifest
     private let directory: URL
-    private let storage: ExtensionStorage
-    private let hostAPI: ExtensionHostAPI
+    private let storage: any PluginStorage
+    private let hostAPI: any PluginHostAPI
     private let appScheme: String
     private let kitDirectory: URL?
-    private weak var delegate: ExtensionRuntimeDelegate?
+    private weak var delegate: (any PluginRuntimeDelegate)?
     private var id: Int?
     private var session: String?
 
     init(
-        client: PluginHelperClient, plugin: PluginManifest, directory: URL, storage: ExtensionStorage,
-        hostAPI: ExtensionHostAPI, appScheme: String, kitDirectory: URL? = PluginCatalog.kitDirectory()
+        client: PluginHelperClient, plugin: PluginManifest, directory: URL, storage: any PluginStorage,
+        hostAPI: any PluginHostAPI, appScheme: String, kitDirectory: URL? = PluginCatalog.kitDirectory()
     ) {
         self.kitDirectory = kitDirectory
         self.client = client
@@ -247,27 +240,20 @@ final class RemotePluginRuntime: ExtensionCommandRuntime {
         self.appScheme = appScheme
     }
 
-    func setDelegate(_ delegate: ExtensionRuntimeDelegate) {
+    func setDelegate(_ delegate: any PluginRuntimeDelegate) {
         self.delegate = delegate
     }
 
-    func boot(config: ExtensionBootConfig) async throws {}
-
-    func launch(
-        session: String, owner: InstalledExtension, command: ExtensionCommand,
-        context: ExtensionLaunchContext
-    ) async throws {
+    func launch(session: String, launch: PluginLaunch) async throws {
         guard let kit = kitDirectory else { throw PluginLaunchError(.kitMissing) }
         if let id { client.unregister(id) }
         let id = client.register(self)
         self.id = id
         self.session = session
-        let launch = PluginHelperLaunch(
-            session: session, commandName: command.name, manifest: plugin.json(),
-            pluginDirectory: directory.path,
-            kitDirectory: kit.path, context: context, appScheme: appScheme,
-            storage: PluginStorageSnapshot(of: plugin.hostName, in: storage))
-        let reply = await client.request { .launch(runtime: id, reply: $0, launch: launch) }
+        let request = PluginHelperLaunch(
+            session: session, manifest: plugin.json(), pluginDirectory: directory.path, kitDirectory: kit.path,
+            launch: launch, appScheme: appScheme, storage: PluginStorageSnapshot(of: plugin.name, in: storage))
+        let reply = await client.request { .launch(runtime: id, reply: $0, launch: request) }
         switch reply {
         case .done?:
             client.startWatchdog()
@@ -280,28 +266,14 @@ final class RemotePluginRuntime: ExtensionCommandRuntime {
         }
     }
 
-    func dispatch(session: String, handler: String, payload: String, completesSession: Bool) async {
+    func send(_ event: PluginEvent, session: String, completesSession: Bool) async {
         guard let id, session == self.session else {
             if completesSession { delegate?.runtime(self, session: session, didFinish: ()) }
             return
         }
         _ = await client.request {
-            .dispatch(
-                runtime: id, reply: $0, session: session, handler: handler, payload: payload,
-                completesSession: completesSession)
+            .event(runtime: id, reply: $0, session: session, event: event, completesSession: completesSession)
         }
-    }
-
-    func popNavigation(session: String) async -> Bool {
-        guard let id, session == self.session else { return false }
-        guard
-            case .popped(let popped)? = await client.request({
-                .pop(runtime: id, reply: $0, session: session)
-            })
-        else {
-            return false
-        }
-        return popped
     }
 
     func runToastAction(token: String) async {
@@ -334,8 +306,8 @@ final class RemotePluginRuntime: ExtensionCommandRuntime {
 
     // MARK: - From the helper
 
-    func rendered(session: String, tree: RenderTree) {
-        delegate?.runtime(self, session: session, didRender: tree)
+    func rendered(session: String, frame: PluginFrame) {
+        delegate?.runtime(self, session: session, didRender: frame)
     }
 
     func failed(session: String, message: String) {
@@ -343,24 +315,16 @@ final class RemotePluginRuntime: ExtensionCommandRuntime {
         delegate?.runtime(self, session: session, didFail: message)
     }
 
-    func navigationDepth(session: String, depth: Int) {
-        delegate?.runtime(self, session: session, navigationDepth: depth)
-    }
-
     func finished(session: String) {
         delegate?.runtime(self, session: session, didFinish: ())
     }
 
-    func log(level: String, message: String) {
-        delegate?.runtime(self, log: level, message: message)
-    }
-
-    func perform(api: String, method: String, arguments: [RenderValue]) async throws -> String {
-        try await hostAPI.perform(api: api, method: method, arguments: arguments)
+    func perform(_ call: PluginHostCall) async throws -> PluginHostAnswer {
+        try await hostAPI.perform(call)
     }
 
     func store(_ write: PluginStorageWrite) {
-        write.apply(to: storage, extension: plugin.hostName)
+        write.apply(to: storage, plugin: plugin.name)
     }
 
     /// The helper exited under the session: it ends with the reason, as a crash in the app would.

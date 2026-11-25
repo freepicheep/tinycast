@@ -31,3 +31,4 @@ When the check fails, delete everything the row lists, then the row.
 
 | Migration | Repairs | Delete with it |
 | --------- | ------- | -------------- |
+| `RaycastExtensionsMigration` | What Raycast extensions left once Tinycast stopped running them: `extensions`, `extension-data`, `extension-support`, `extension-commands.json` and `extension-versions.json` under Application Support; the `extension…` defaults and `hotkey.extensionCommand.*` shortcuts; `extension:` keys in favorites, hidden rows, aliases and ranking; and the `extensions` section of `settings.json` | `Migrations/RaycastExtensionsMigration.swift`, its call in `AppCore.start`, `Tests/RaycastExtensionsMigrationTests.swift`, its `run-tests.sh` entry and its row in [testing.md](testing.md) |

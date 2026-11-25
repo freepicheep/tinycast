@@ -22,7 +22,7 @@ struct PaletteFilterTests {
         collapsed: Bool = false, mode: PaletteMode, accessory: Bool = false
     ) -> PaletteFilterAction {
         PaletteFilterAction.resolve(
-            collapsed: collapsed, mode: mode, commandHasAccessory: accessory)
+            collapsed: collapsed, mode: mode, commandHasPicker: accessory)
     }
 
     static func main() {
@@ -43,23 +43,23 @@ struct PaletteFilterTests {
             "Quick AI opens its model selector through ⌘P")
         expect(
             resolve(mode: .ai, accessory: true), .aiModel,
-            "a stale extension accessory cannot replace Quick AI's model selector")
+            "a stale plugin picker cannot replace Quick AI's model selector")
         expect(
-            resolve(mode: .extensionCommand, accessory: true), .extensionAccessory,
-            "a running command's own dropdown answers ⌘P on its own screen")
+            resolve(mode: .pluginCommand, accessory: true), .pluginPicker,
+            "a running command's toolbar picker answers ⌘P on its own screen")
 
         // The regression this guards: a command's dropdown must not let the clipboard's filter
         // open over it, and must not swallow ⌘P on a command that declared none.
         expect(
-            resolve(mode: .extensionCommand, accessory: false), .ignored,
+            resolve(mode: .pluginCommand, accessory: false), .ignored,
             "a command with no dropdown leaves ⌘P alone rather than opening nothing")
         expect(
             resolve(mode: .clipboard, accessory: true), .clipboardFilter,
-            "off an extension screen the flag cannot reach the clipboard's own filter")
+            "off a plugin screen the flag cannot reach the clipboard's own filter")
 
         expect(
             resolve(mode: .fileSearch, accessory: true), .fileSearchFilter,
-            "off an extension screen the flag cannot reach file search's own filter either")
+            "off a plugin screen the flag cannot reach file search's own filter either")
 
         // Every other mode was untouched by ⌘P before and has to stay that way.
         for mode in [
@@ -75,7 +75,7 @@ struct PaletteFilterTests {
         }
 
         // Collapsed there is no header to hang a button off, so no filter may open.
-        for mode in [PaletteMode.clipboard, .fileSearch, .emoji, .ai, .extensionCommand, .launcher] {
+        for mode in [PaletteMode.clipboard, .fileSearch, .emoji, .ai, .pluginCommand, .launcher] {
             expect(
                 resolve(collapsed: true, mode: mode, accessory: true), .ignored,
                 "the compact bar draws no filter button, so ⌘P opens nothing on \(mode.rawValue)")

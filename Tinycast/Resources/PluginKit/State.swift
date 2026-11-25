@@ -1,4 +1,4 @@
-// State a command owns, keeps between launches, or reads from its preferences.
+// State a command owns, keeps between launches, reads from its preferences or its environment.
 
 import Foundation
 import _TinycastHost
@@ -48,47 +48,10 @@ public struct Binding<Value> {
     public var projectedValue: Binding<Value> { self }
 }
 
-/// What `@AppStorage` and `LocalStorage` keep: strings, numbers and booleans.
-public protocol AppStorageValue {
-    init?(_stored: PluginValue)
-    var _stored: PluginValue { get }
-}
-
-extension String: AppStorageValue {
-    public init?(_stored: PluginValue) {
-        guard case .string(let value) = _stored else { return nil }
-        self = value
-    }
-    public var _stored: PluginValue { .string(self) }
-}
-
-extension Int: AppStorageValue {
-    public init?(_stored: PluginValue) {
-        guard case .number(let value) = _stored else { return nil }
-        self = Int(value)
-    }
-    public var _stored: PluginValue { .number(Double(self)) }
-}
-
-extension Double: AppStorageValue {
-    public init?(_stored: PluginValue) {
-        guard case .number(let value) = _stored else { return nil }
-        self = value
-    }
-    public var _stored: PluginValue { .number(self) }
-}
-
-extension Bool: AppStorageValue {
-    public init?(_stored: PluginValue) {
-        guard case .bool(let value) = _stored else { return nil }
-        self = value
-    }
-    public var _stored: PluginValue { .bool(self) }
-}
-
-/// A value kept in the plugin's `LocalStorage`, which outlives the command; nothing else reads it.
+/// A value kept in the plugin's own storage, which outlives the command and is shared by its
+/// commands: any `Codable` value, stored as JSON.
 @propertyWrapper
-public final class AppStorage<Value: AppStorageValue> {
+public final class AppStorage<Value: Codable> {
     private let key: String
     private let defaultValue: Value
 
@@ -98,9 +61,15 @@ public final class AppStorage<Value: AppStorageValue> {
     }
 
     public var wrappedValue: Value {
-        get { _environment?.storedValue(forKey: key).flatMap { Value(_stored: $0) } ?? defaultValue }
+        get {
+            guard let stored = _environment?.storedValue(forKey: key),
+                let value = try? JSONDecoder().decode(Value.self, from: Data(stored.utf8))
+            else { return defaultValue }
+            return value
+        }
         set {
-            _environment?.setStoredValue(newValue._stored, forKey: key)
+            guard let data = try? JSONEncoder().encode(newValue) else { return }
+            _environment?.setStoredValue(String(decoding: data, as: UTF8.self), forKey: key)
             _environment?.invalidate()
         }
     }
@@ -117,8 +86,12 @@ public protocol PreferenceValue {
 
 extension String: PreferenceValue {
     public init?(_preference: PluginValue) {
-        guard let text = _preference.text else { return nil }
-        self = text
+        switch _preference {
+        case .string(let value): self = value
+        case .number(let value): self = value == value.rounded() ? String(Int(value)) : String(value)
+        case .bool(let value): self = value ? "true" : "false"
+        default: return nil
+        }
     }
 }
 
@@ -182,7 +155,43 @@ public struct Preference<Value: PreferenceValue> {
     }
 }
 
-/// Every preference's value, by name.
-public func getPreferenceValues() -> [String: PluginValue] {
-    _launch?.preferences ?? [:]
+// MARK: - The environment
+
+public enum ColorScheme {
+    case light
+    case dark
+}
+
+/// Leaves the screen a `NavigationLink` pushed: `@Environment(\.dismiss) var dismiss`, then `dismiss()`.
+public struct DismissAction {
+    public func callAsFunction() {
+        _ = _tinycastPop()
+    }
+}
+
+/// Opens a web address, a file path or an app link the manifest allows.
+public struct OpenURLAction {
+    public func callAsFunction(_ url: URL) {
+        open(url.absoluteString)
+    }
+}
+
+/// What `@Environment` reads.
+public struct EnvironmentValues {
+    public var dismiss: DismissAction { DismissAction() }
+    public var openURL: OpenURLAction { OpenURLAction() }
+    /// The palette's appearance when the command started.
+    public var colorScheme: ColorScheme { (_launch?.isDarkAppearance ?? false) ? .dark : .light }
+}
+
+/// A value from the command's environment: `@Environment(\.dismiss) private var dismiss`.
+@propertyWrapper
+public struct Environment<Value> {
+    private let keyPath: KeyPath<EnvironmentValues, Value>
+
+    public init(_ keyPath: KeyPath<EnvironmentValues, Value>) {
+        self.keyPath = keyPath
+    }
+
+    public var wrappedValue: Value { EnvironmentValues()[keyPath: keyPath] }
 }

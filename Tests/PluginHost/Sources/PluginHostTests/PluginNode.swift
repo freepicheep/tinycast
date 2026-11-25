@@ -1,1 +1,0 @@
-../../../../Tinycast/Features/Plugins/Model/PluginNode.swift

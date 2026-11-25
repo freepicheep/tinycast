@@ -1,0 +1,273 @@
+{
+  "depth" : 1,
+  "generation" : 0,
+  "screen" : {
+    "kind" : "list",
+    "value" : {
+      "chrome" : {
+        "actions" : [
+
+        ],
+        "isLoading" : false,
+        "pickers" : [
+
+        ],
+        "search" : {
+          "binding" : "search",
+          "prompt" : "Filter cities",
+          "text" : ""
+        },
+        "title" : "Cities"
+      },
+      "sections" : [
+        {
+          "id" : "Cities",
+          "rows" : [
+            {
+              "accessories" : [
+                {
+                  "kind" : "count",
+                  "value" : 5
+                }
+              ],
+              "actions" : [
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "kind" : "copy",
+                    "text" : "Tokyo"
+                  },
+                  "id" : "Copy to Clipboard",
+                  "title" : "Copy to Clipboard"
+                },
+                {
+                  "children" : [
+
+                  ],
+                  "handler" : 1,
+                  "id" : "Pin",
+                  "shortcut" : {
+                    "key" : {
+                      "kind" : "character",
+                      "text" : "p"
+                    },
+                    "modifiers" : [
+                      "command",
+                      "shift"
+                    ]
+                  },
+                  "title" : "Pin"
+                },
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "kind" : "push"
+                  },
+                  "handler" : 2,
+                  "id" : "Show",
+                  "title" : "Show"
+                },
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "kind" : "openURL",
+                    "url" : "https://maps.apple.com/?q=Tokyo"
+                  },
+                  "id" : "Map",
+                  "title" : "Map"
+                }
+              ],
+              "icon" : {
+                "kind" : "symbol",
+                "name" : "building.2"
+              },
+              "id" : "Tokyo",
+              "isRedacted" : false,
+              "keywords" : [
+
+              ],
+              "subtitle" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "Japan"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              },
+              "title" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "Tokyo"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              }
+            },
+            {
+              "accessories" : [
+                {
+                  "kind" : "count",
+                  "value" : 6
+                }
+              ],
+              "actions" : [
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "kind" : "copy",
+                    "text" : "London"
+                  },
+                  "id" : "Copy to Clipboard",
+                  "title" : "Copy to Clipboard"
+                },
+                {
+                  "children" : [
+
+                  ],
+                  "handler" : 3,
+                  "id" : "Pin",
+                  "shortcut" : {
+                    "key" : {
+                      "kind" : "character",
+                      "text" : "p"
+                    },
+                    "modifiers" : [
+                      "command",
+                      "shift"
+                    ]
+                  },
+                  "title" : "Pin"
+                },
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "kind" : "push"
+                  },
+                  "handler" : 4,
+                  "id" : "Show",
+                  "title" : "Show"
+                }
+              ],
+              "icon" : {
+                "kind" : "symbol",
+                "name" : "building.2"
+              },
+              "id" : "London",
+              "isRedacted" : false,
+              "keywords" : [
+
+              ],
+              "subtitle" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "UK"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              },
+              "title" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "London"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              }
+            },
+            {
+              "accessories" : [
+                {
+                  "kind" : "count",
+                  "value" : 4
+                }
+              ],
+              "actions" : [
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "kind" : "copy",
+                    "text" : "Lima"
+                  },
+                  "id" : "Copy to Clipboard",
+                  "title" : "Copy to Clipboard"
+                },
+                {
+                  "children" : [
+
+                  ],
+                  "handler" : 5,
+                  "id" : "Pin",
+                  "shortcut" : {
+                    "key" : {
+                      "kind" : "character",
+                      "text" : "p"
+                    },
+                    "modifiers" : [
+                      "command",
+                      "shift"
+                    ]
+                  },
+                  "title" : "Pin"
+                },
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "kind" : "push"
+                  },
+                  "handler" : 6,
+                  "id" : "Show",
+                  "title" : "Show"
+                }
+              ],
+              "icon" : {
+                "kind" : "symbol",
+                "name" : "building.2"
+              },
+              "id" : "Lima",
+              "isRedacted" : false,
+              "keywords" : [
+
+              ],
+              "subtitle" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "Peru"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              },
+              "title" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "Lima"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              }
+            }
+          ],
+          "title" : "Cities"
+        }
+      ],
+      "showsDetail" : false
+    }
+  },
+  "version" : {
+    "major" : 1,
+    "minor" : 0
+  }
+}

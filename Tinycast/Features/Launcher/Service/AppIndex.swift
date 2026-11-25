@@ -14,7 +14,7 @@ struct AppEntry: Identifiable, Hashable, Sendable {
         case windowRoom
         case quicklink
         case appleShortcut
-        case extensionCommand
+        case pluginCommand
         case meeting
 
         var descriptor: KindDescriptor {
@@ -80,10 +80,10 @@ struct AppEntry: Identifiable, Hashable, Sendable {
                     label: "Apple Shortcut", sectionTitle: "Apple Shortcuts",
                     openVerb: "Run Shortcut", canHideFromSearch: true,
                     canRevealInFinder: false, canDragOut: false, isSymbolIcon: false, rankPriority: 3)
-            case .extensionCommand:
-                // The label is per-entry, the owning extension's title; this is the fallback.
+            case .pluginCommand:
+                // The label is per-entry, the owning plugin's title; this is the fallback.
                 return KindDescriptor(
-                    label: "Extension", sectionTitle: "Extensions",
+                    label: "Plugin", sectionTitle: "Plugins",
                     openVerb: "Run Command", canHideFromSearch: true,
                     canRevealInFinder: false, canDragOut: false, isSymbolIcon: true, rankPriority: 3)
             case .meeting:
@@ -120,19 +120,17 @@ struct AppEntry: Identifiable, Hashable, Sendable {
     var settingsOwner: SettingsTab?
     /// Secondary label beside the name, for an entry whose name alone can't say what it acts on.
     var subtitle: String?
-    /// Background-refresh dot for a scheduled extension command; nil everywhere else.
-    var backgroundRefresh: ExtensionRefreshState?
     /// Ranked like the name: a translation, a rename, `CFBundleAlternateNames`.
     var alternateTitles: [String] = []
     /// Per-item symbol, for the one kind whose glyph is the user's choice. Nil elsewhere.
     var symbolName: String?
-    /// Found by, never ranked by: a declared name, an extension's keywords.
+    /// Found by, never ranked by: a declared name, a plugin command's keywords.
     var keywords: [String] = []
     /// Moves when the bundle's icon changes on disk, retiring the cached bitmap. Applications only.
     var iconStamp: Int = 0
     /// Set by the feature that produced the entry when its glyph isn't derivable from `kind`.
     var iconOverride: EntryIcon?
-    /// What this entry comes from — an extension's title. Labels the row; ranks as a subtitle.
+    /// What this entry comes from — a plugin's title. Labels the row; ranks as a subtitle.
     var ownerName: String?
     /// When it landed on disk, so a fresh install can be suggested before its first open.
     var installedAt: Date?
@@ -176,7 +174,7 @@ struct AppEntry: Identifiable, Hashable, Sendable {
         case .command, .quickAction, .customCommand, .systemAction, .windowCommand, .windowLayout,
             .windowRoom, .quicklink, .appleShortcut, .snippet:
             return HotKeyAction(entryID: id)
-        case .extensionCommand, .meeting:
+        case .pluginCommand, .meeting:
             return nil
         }
     }
@@ -222,7 +220,7 @@ struct AppEntry: Identifiable, Hashable, Sendable {
         case .customCommand:
             return .tile(symbol: symbolName ?? CustomCommand.sfSymbol, tint: SettingsTab.commands.tint)
         case .meeting: return .tile(symbol: symbolName ?? "video.fill", tint: SettingsTab.calendar.tint)
-        case .application, .systemSettings, .appleShortcut, .extensionCommand:
+        case .application, .systemSettings, .appleShortcut, .pluginCommand:
             return .symbol(symbolName ?? "questionmark")
         }
     }
@@ -397,7 +395,7 @@ final class AppIndex {
     private var quicklinkEntries: [AppEntry] = []
     private var appleShortcutEntries: [AppEntry] = []
     private var customQuickActionEntries: [AppEntry] = []
-    private var extensionEntries: [AppEntry] = []
+    private var pluginEntries: [AppEntry] = []
     private var meetingEntries: [AppEntry] = []
     /// The catalog's commands a disabled feature hides; the Commands slice is recomputed from it.
     private(set) var hiddenCommands: Set<CommandID> = []
@@ -504,9 +502,9 @@ final class AppIndex {
         publishEntries()
     }
 
-    func setExtensionCommands(_ entries: [AppEntry]) {
-        guard entries != extensionEntries else { return }
-        extensionEntries = entries
+    func setPluginCommands(_ entries: [AppEntry]) {
+        guard entries != pluginEntries else { return }
+        pluginEntries = entries
         publishEntries()
     }
 
@@ -696,7 +694,7 @@ final class AppIndex {
         let updated =
             Self.named(meetingEntries) + discoveredEntries
             + Self.named(
-                extensionEntries + quicklinkEntries + appleShortcutEntries + snippetEntries
+                pluginEntries + quicklinkEntries + appleShortcutEntries + snippetEntries
                     + Self.systemActionEntries + windowLayoutEntries + windowRoomEntries
                     + windowCommandEntries
                     + customWindowSizeEntries + customCommandEntries + quickActionEntries
@@ -826,9 +824,9 @@ final class AppIndex {
                 && !($0.bundleID?.hasPrefix(Self.ownBundlePrefix) ?? false)
         }
         return LauncherSuggestions.select(from: eligible, now: usage.now) { entry in
-            // `hotKeyAction` is nil for an extension command, whose shortcut is keyed by entry ID.
+            // `hotKeyAction` is nil for a plugin command, whose shortcut is keyed by entry ID.
             let action: HotKeyAction? =
-                entry.kind == .extensionCommand ? .extensionCommand(entryID: entry.id) : entry.hotKeyAction
+                entry.kind == .pluginCommand ? .pluginCommand(entryID: entry.id) : entry.hotKeyAction
             return LauncherSuggestions.Traits(
                 signals: signals(for: entry, usage: usage), installedAt: entry.installedAt,
                 hasHotKey: action.flatMap(hotKeys.binding(for:)) != nil,

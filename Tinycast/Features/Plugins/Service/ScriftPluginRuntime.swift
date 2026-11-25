@@ -5,7 +5,7 @@ import Scrift
 /// host APIs its manifest grants. Nothing is shared between plugins or kept from one launch to
 /// the next. Everything happens on the main actor, inside `limits`.
 @MainActor
-final class ScriftPluginRuntime: ExtensionCommandRuntime {
+final class ScriftPluginRuntime: PluginRuntime {
     /// Per script call (a render, an action, a keystroke) and per task step: a plugin that loops
     /// forever panics after a second instead of freezing the palette.
     static let limits = ScriftLimits.untrusted
@@ -14,14 +14,13 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
     private let directory: URL
     private let kitSources: @MainActor () async -> PluginSources?
     private let storage: any PluginStorage
-    private let hostAPI: ExtensionHostAPI
+    private let hostAPI: any PluginHostAPI
     private let appScheme: String
     private let moduleCache: ScriftModuleCache
-    private weak var delegate: ExtensionRuntimeDelegate?
+    private weak var delegate: (any PluginRuntimeDelegate)?
 
     private var session: String?
     private var loaded: Loaded?
-    private var renderer = PluginRenderer()
     private var renderScheduled = false
     private var pump: Task<Void, Never>?
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
@@ -33,8 +32,9 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
         let kit: ScriftModule
         let module: ScriftModule
         let environment: PluginEnvironment
-        let render: () throws -> PluginNode?
-        let depth: () throws -> Int
+        let frame: () throws -> PluginFrame?
+        let perform: (Int, Int) throws -> Bool
+        let set: (String, PluginFieldValue) throws -> Bool
         let pop: () throws -> Bool
         let end: () throws -> Void
 
@@ -42,7 +42,7 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
     }
 
     init(
-        plugin: PluginManifest, directory: URL, storage: any PluginStorage, hostAPI: ExtensionHostAPI,
+        plugin: PluginManifest, directory: URL, storage: any PluginStorage, hostAPI: any PluginHostAPI,
         appScheme: String, moduleCache: ScriftModuleCache = .shared,
         kitSources: @escaping @MainActor () async -> PluginSources?
     ) {
@@ -55,26 +55,16 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
         self.kitSources = kitSources
     }
 
-    func setDelegate(_ delegate: ExtensionRuntimeDelegate) {
+    func setDelegate(_ delegate: any PluginRuntimeDelegate) {
         self.delegate = delegate
     }
 
-    /// The kit compiles per launch, against that launch's permissions.
-    func boot(config: ExtensionBootConfig) async throws {}
-
     // MARK: - Launching
 
-    func launch(
-        session: String, owner: InstalledExtension, command: ExtensionCommand,
-        context: ExtensionLaunchContext
-    ) async throws {
-        try await launch(session: session, commandName: command.name, context: context)
-    }
-
-    /// The plugin helper's launch, which has the command's name and the context the app made.
-    func launch(session: String, commandName: String, context: ExtensionLaunchContext) async throws {
+    func launch(session: String, launch: PluginLaunch) async throws {
+        let commandName = launch.commandName
         guard let declared = plugin.commands.first(where: { $0.name == commandName }) else {
-            throw ExtensionLaunchError.unknownCommand(commandName)
+            throw PluginLaunchError(message: "Manifest.swift declares no command “\(commandName)”.")
         }
         let directory = directory
         let read = await Task.detached(priority: .userInitiated) {
@@ -88,7 +78,7 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
         }
         self.session = session
         do {
-            loaded = try load(kit: kit, sources: sources, command: declared, context: context)
+            loaded = try load(kit: kit, sources: sources, command: declared, launch: launch)
         } catch {
             self.session = nil
             throw PluginLaunchError(error, output: output.text)
@@ -96,14 +86,13 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
         switch declared.mode {
         case .view, .menuBar: open(declared.name)
         case .action:
-            // Runs after the launch returns, as a JavaScript command's promise does.
+            // Runs after the launch returns, so the host hears the launch succeeded first.
             Task { @MainActor [weak self] in await self?.run(declared.name) }
         }
     }
 
     private func load(
-        kit kitSources: PluginSources, sources: PluginSources, command: PluginCommand,
-        context launch: ExtensionLaunchContext
+        kit kitSources: PluginSources, sources: PluginSources, command: PluginCommand, launch: PluginLaunch
     ) throws(PluginSessionError) -> Loaded {
         let output = output
         let compiled = try Self.compile(
@@ -118,11 +107,13 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
             let kit = compiled.kit
             let begin = try kit.function(
                 "_tinycastBegin", as: ((PluginEnvironment, PluginLaunch) throws -> Void).self, limits: limits)
-            try begin(environment, PluginLaunch(launch, command: command.name))
+            try begin(environment, launch)
             return Loaded(
                 context: compiled.context, kit: kit, module: compiled.module, environment: environment,
-                render: try kit.function("_tinycastRender", as: (() throws -> PluginNode?).self, limits: limits),
-                depth: try kit.function("_tinycastDepth", as: (() throws -> Int).self, limits: limits),
+                frame: try kit.function("_tinycastFrame", as: (() throws -> PluginFrame?).self, limits: limits),
+                perform: try kit.function("_tinycastPerform", as: ((Int, Int) throws -> Bool).self, limits: limits),
+                set: try kit.function(
+                    "_tinycastSet", as: ((String, PluginFieldValue) throws -> Bool).self, limits: limits),
                 pop: try kit.function("_tinycastPop", as: (() throws -> Bool).self, limits: limits),
                 end: try kit.function("_tinycastEnd", as: (() throws -> Void).self, limits: limits))
         }
@@ -133,7 +124,7 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
     /// `tinycast-plugin dump` checks a plugin with this alone.
     static func compile(
         plugin: PluginManifest, kit kitSources: PluginSources, sources: PluginSources,
-        hostAPI: ExtensionHostAPI, cache: ScriftModuleCache? = .shared, output: @escaping (String) -> Void
+        hostAPI: any PluginHostAPI, cache: ScriftModuleCache? = .shared, output: @escaping (String) -> Void
     ) throws(PluginSessionError) -> (context: ScriftContext, kit: ScriftModule, module: ScriftModule) {
         let context = ScriftContext(
             modules: PluginCapabilities.modules(for: plugin.permissions), cache: cache, output: output)
@@ -234,24 +225,25 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
 
     // MARK: - Events from the palette
 
-    func dispatch(session: String, handler: String, payload: String, completesSession: Bool) async {
-        guard session == self.session, let body = renderer.handlers[handler] else {
+    func send(_ event: PluginEvent, session: String, completesSession: Bool) async {
+        guard session == self.session, let loaded else {
             if completesSession { delegate?.runtime(self, session: session, didFinish: ()) }
             return
         }
-        let arguments = PluginRenderer.arguments(fromJSON: payload)
-        call { try body(arguments) }
+        switch event {
+        case .perform(let handler, let generation):
+            call { _ = try loaded.perform(handler, generation) }
+        case .set(let node, let value, _):
+            call { _ = try loaded.set(node, value) }
+        case .search(let text, _):
+            call { _ = try loaded.set(PluginEvent.searchNode, .text(text)) }
+        case .back:
+            call { _ = try loaded.pop() }
+        }
         guard completesSession else { return }
         await drainHostCalls()
         guard self.session == session else { return }
         delegate?.runtime(self, session: session, didFinish: ())
-    }
-
-    func popNavigation(session: String) async -> Bool {
-        guard session == self.session, let loaded, (try? loaded.depth()) ?? 1 > 1 else { return false }
-        var popped = false
-        call { popped = try loaded.pop() }
-        return popped
     }
 
     func runToastAction(token: String) async {
@@ -315,14 +307,14 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
     private func renderNow() {
         renderScheduled = false
         guard let loaded, let session else { return }
-        let tree: RenderTree
+        let frame: PluginFrame?
         do {
-            tree = renderer.tree(root: try loaded.render(), depth: try loaded.depth())
+            frame = try loaded.frame()
         } catch {
             return fail(error)
         }
-        delegate?.runtime(self, session: session, didRender: tree)
-        delegate?.runtime(self, session: session, navigationDepth: tree.depth)
+        guard let frame else { return }
+        delegate?.runtime(self, session: session, didRender: frame)
     }
 
     /// Runs the tasks a call started (a `.task`, a `Task { }` in an action) as they become ready.
@@ -373,26 +365,9 @@ final class ScriftPluginRuntime: ExtensionCommandRuntime {
     }
 }
 
-extension PluginLaunch {
-    init(_ context: ExtensionLaunchContext, command: String) {
-        self.init(
-            commandName: command, launchType: context.launchType.rawValue, arguments: context.arguments,
-            preferences: context.preferences.mapValues(PluginValue.init),
-            fallbackText: context.fallbackText,
-            launchContext: context.launchContext.mapValues(PluginValue.init),
-            isDarkAppearance: context.isDarkAppearance)
-    }
-}
-
-extension PluginValue {
-    init(_ preference: ExtensionPreferenceValue) {
-        switch preference {
-        case .string(let text): self = .string(text)
-        case .bool(let flag): self = .bool(flag)
-        case .number(let number): self = .number(number)
-        case .application(let path): self = .string(path)
-        }
-    }
+extension PluginEvent {
+    /// The node a `search` event sets: the search field's binding.
+    static let searchNode = "search"
 }
 
 extension PluginCommand.Mode {

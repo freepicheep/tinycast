@@ -1,0 +1,137 @@
+{
+  "depth" : 1,
+  "generation" : 0,
+  "screen" : {
+    "kind" : "grid",
+    "value" : {
+      "aspectRatio" : 1.5,
+      "chrome" : {
+        "actions" : [
+
+        ],
+        "isLoading" : false,
+        "pickers" : [
+          {
+            "id" : "picker.Palette",
+            "options" : [
+              {
+                "title" : "Warm"
+              },
+              {
+                "title" : "Cool"
+              }
+            ],
+            "selection" : 0,
+            "title" : "Palette"
+          }
+        ],
+        "search" : {
+          "text" : ""
+        }
+      },
+      "columns" : 4,
+      "fit" : "contain",
+      "inset" : "none",
+      "sections" : [
+        {
+          "id" : "Swatches",
+          "rows" : [
+            {
+              "accessories" : [
+
+              ],
+              "actions" : [
+
+              ],
+              "content" : {
+                "color" : {
+                  "kind" : "semantic",
+                  "name" : "red"
+                },
+                "kind" : "color"
+              },
+              "id" : "Swatches.0",
+              "isRedacted" : false,
+              "keywords" : [
+
+              ],
+              "title" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "Red"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              }
+            },
+            {
+              "accessories" : [
+
+              ],
+              "actions" : [
+
+              ],
+              "content" : {
+                "kind" : "symbol",
+                "name" : "star"
+              },
+              "id" : "Swatches.1",
+              "isRedacted" : false,
+              "keywords" : [
+
+              ],
+              "title" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "Star"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              }
+            },
+            {
+              "accessories" : [
+
+              ],
+              "actions" : [
+                {
+                  "children" : [
+
+                  ],
+                  "effect" : {
+                    "kind" : "copy",
+                    "text" : "warm"
+                  },
+                  "id" : "Copy to Clipboard",
+                  "title" : "Copy to Clipboard"
+                }
+              ],
+              "content" : {
+                "kind" : "emoji",
+                "text" : "☀️"
+              },
+              "id" : "Swatches.2",
+              "isRedacted" : false,
+              "keywords" : [
+
+              ],
+              "title" : {
+                "content" : {
+                  "kind" : "plain",
+                  "text" : "Sun"
+                },
+                "isBold" : false,
+                "isMonospaced" : false
+              }
+            }
+          ],
+          "title" : "Swatches"
+        }
+      ]
+    }
+  },
+  "version" : {
+    "major" : 1,
+    "minor" : 0
+  }
+}

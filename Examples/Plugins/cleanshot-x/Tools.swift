@@ -1,13 +1,15 @@
 import Tinycast
 
 /// One of CleanShot X's URL commands: `cleanshot://<command>`. See cleanshot.com/docs-api.
-struct Tool {
+struct Tool: Identifiable {
     let command: String
     let title: String
     let subtitle: String
     let systemImage: String
     /// Takes `?action=`: what CleanShot does with the capture instead of its own default.
     var takesAfterCapture = false
+
+    var id: String { command }
 
     func url(after: AfterCapture? = nil) -> String {
         guard let after else { return "cleanshot://\(command)" }

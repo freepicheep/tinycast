@@ -5,8 +5,7 @@ import Scrift
 
 /// The one host object a plugin's session holds. The kit keeps it in a global, so every call is
 /// scoped to the session that made it, and a plugin reaches only its own storage. Everything but
-/// storage goes through the Extensions host's `ExtensionHostAPI`, which is what a Raycast command
-/// reaches too: the same toasts, clipboard, windows and launches.
+/// storage is a `PluginHostCall` the app checks and performs.
 @ScriftExport
 @MainActor
 final class PluginEnvironment {
@@ -16,7 +15,7 @@ final class PluginEnvironment {
     /// Tinycast's own scheme (`tinycast`, or `tinycast-dev` in Debug), where an OAuth sign-in returns.
     private var appScheme = "tinycast"
     private var storage: (any PluginStorage)?
-    private var hostAPI: ExtensionHostAPI?
+    private var hostAPI: (any PluginHostAPI)?
     private var onInvalidate: () -> Void = {}
     private var toastActions: [String: () throws -> Void] = [:]
     private var nextToastAction = 1
@@ -35,101 +34,54 @@ final class PluginEnvironment {
 
     // MARK: - Storage, which a getter reads synchronously
 
-    func storedValue(forKey key: String) -> PluginValue? {
-        guard let value = storage?.localStorageValue(extension: name, key: key) else { return nil }
-        return Self.value(value)
+    /// An `@AppStorage` value's JSON text.
+    func storedValue(forKey key: String) -> String? {
+        storage?.value(plugin: name, key: key)
     }
 
-    /// Only strings, numbers and booleans are kept, as in Raycast's `LocalStorage`.
-    func setStoredValue(_ value: PluginValue?, forKey key: String) {
-        guard let value else {
-            storage?.removeLocalStorage(extension: name, key: key)
-            return
-        }
-        guard let stored = ExtensionStorage.StoredValue(renderValue: value.renderValue) else { return }
-        storage?.setLocalStorage(extension: name, key: key, value: stored)
+    /// Nil removes the key.
+    func setStoredValue(_ value: String?, forKey key: String) {
+        storage?.setValue(value, plugin: name, key: key)
     }
 
-    func storedValues() -> [String: PluginValue] {
-        (storage?.allLocalStorage(extension: name) ?? [:]).mapValues(Self.value)
+    func storedKeys() -> [String] {
+        (storage?.values(plugin: name) ?? [:]).keys.sorted()
     }
 
     func clearStoredValues() {
-        storage?.clearLocalStorage(extension: name)
-    }
-
-    func cachedValue(namespace: String, key: String) -> String? {
-        storage?.caches(extension: name)[namespace]?[key]
-    }
-
-    /// A nil value removes the key; a nil key empties the namespace.
-    func setCachedValue(_ value: String?, namespace: String, key: String?) {
-        storage?.setCache(extension: name, namespace: namespace, key: key, value: value)
-    }
-
-    func cachedKeys(namespace: String) -> [String] {
-        Array((storage?.caches(extension: name)[namespace] ?? [:]).keys).sorted()
-    }
-
-    /// A form's `storeValue` fields, which the next launch of the command starts from.
-    func storeFormValues(_ values: [String: String]) {
-        guard !values.isEmpty else { return }
-        storage?.setFormValues(extension: name, command: command, values: values)
-    }
-
-    func storedFormValue(_ field: String) -> String? {
-        storage?.formValues(extension: name, command: command)[field]
+        storage?.clearValues(plugin: name)
     }
 
     // MARK: - Clipboard: writing needs no permission, since the user asked for it
 
-    func copy(_ text: String, concealed: Bool) {
-        call("clipboard", "copy", [.object(["text": .string(text)]), .object(["concealed": .bool(concealed)])])
-    }
-
-    func paste(_ text: String) {
-        call("clipboard", "paste", [.object(["text": .string(text)])])
-    }
-
-    func clearClipboard() {
-        call("clipboard", "clear", [])
-    }
+    func copy(_ text: String, concealed: Bool) { call(.copy(text, concealed: concealed)) }
+    func paste(_ text: String) { call(.paste(text)) }
+    func clearClipboard() { call(.clearClipboard) }
 
     // MARK: - Opening things
 
     /// Web, mail and file targets, and the app link schemes the manifest names; anything else is
-    /// refused here, before it reaches the host.
+    /// refused here, before it reaches the app, which checks again.
     func open(_ target: String, application: String?) {
         guard PluginOpenTarget.resolve(target, schemes: urlSchemes) != nil else {
             let scheme = URL(string: target)?.scheme ?? target
             showHUD(String(localized: "This plugin can't open \(scheme) links: Manifest.swift doesn't list them"))
             return
         }
-        var arguments: [RenderValue] = [.string(target)]
-        if let application { arguments.append(.string(application)) }
-        call("system", "open", arguments)
+        call(.open(target, application: application))
     }
 
-    func showInFinder(_ path: String) {
-        call("system", "showInFinder", [.string(path)])
-    }
-
-    func openWith(_ path: String) {
-        call("system", "openWith", [.string(path)])
-    }
+    func showInFinder(_ path: String) { call(.showInFinder(path)) }
+    func openWith(_ path: String) { call(.openWith(path)) }
 
     /// Only a `TrashButton` reaches this: the user chose the action that names the paths.
-    func trash(_ paths: [String]) {
-        call("system", "trash", [.array(paths.map(RenderValue.string))])
-    }
+    func trash(_ paths: [String]) { call(.trash(paths)) }
 
     // MARK: - Feedback
 
-    func showHUD(_ text: String) {
-        call("feedback", "showHUD", [.string(text)])
-    }
+    func showHUD(_ text: String) { call(.showHUD(text)) }
 
-    /// Keeps a toast's action under a token the host sends back when its button is pressed.
+    /// Keeps a toast's action under a token the app sends back when its button is pressed.
     /// Separate from `showToast`, which awaits and so can't take a closure across the boundary.
     func toastToken(_ action: @escaping () throws -> Void) -> String {
         let token = "plugin-toast-\(nextToastAction)"
@@ -138,83 +90,66 @@ final class PluginEnvironment {
         return token
     }
 
-    /// The toast's id, for `updateToast` and `hideToast`.
+    /// The toast's id, for `updateToast` and `hideToast`. `style` is `success`, `failure` or `animated`.
     func showToast(
         style: String, title: String, message: String?, actionTitle: String?, actionToken: String?
     ) async throws -> Int {
-        let payload = toastPayload(style, title, message, actionTitle, actionToken)
-        return Int(try await perform("feedback", "showToast", [payload])) ?? 0
+        let toast = Self.toast(style, title, message, actionTitle, actionToken)
+        guard case .int(let id) = try await perform(.showToast(toast)) else { return 0 }
+        return id
     }
 
     func updateToast(
         _ id: Int, style: String, title: String, message: String?, actionTitle: String?, actionToken: String?
     ) {
-        let payload = toastPayload(style, title, message, actionTitle, actionToken)
-        call("feedback", "updateToast", [.number(Double(id)), payload])
+        call(.updateToast(id, Self.toast(style, title, message, actionTitle, actionToken)))
     }
 
-    func hideToast(_ id: Int) {
-        call("feedback", "hideToast", [.number(Double(id))])
-    }
+    func hideToast(_ id: Int) { call(.hideToast(id)) }
 
     func confirm(
         title: String, message: String?, primaryTitle: String?, isDestructive: Bool
     ) async throws -> Bool {
-        var primary: [String: RenderValue] = [:]
-        if let primaryTitle { primary["title"] = .string(primaryTitle) }
-        if isDestructive { primary["style"] = .string("destructive") }
-        var payload: [String: RenderValue] = ["title": .string(title), "primaryAction": .object(primary)]
-        if let message { payload["message"] = .string(message) }
-        return try await perform("feedback", "confirmAlert", [.object(payload)]) == "true"
+        let alert = PluginAlert(
+            title: title, message: message, primaryTitle: primaryTitle, isDestructive: isDestructive)
+        guard case .bool(let confirmed) = try await perform(.confirm(alert)) else { return false }
+        return confirmed
     }
 
     // MARK: - The palette and the launcher
 
-    func closeMainWindow(clearRootSearch: Bool) {
-        call("window", "close", [.object(["clearRootSearch": .bool(clearRootSearch)])])
-    }
-
-    func popToRoot() { call("window", "popToRoot", []) }
-    func clearSearchBar() { call("window", "clearSearchBar", []) }
-    func openPreferences() { call("window", "openPreferences", [.string("extension")]) }
+    func closeMainWindow(clearRootSearch: Bool) { call(.closeMainWindow(clearRootSearch: clearRootSearch)) }
+    func popToRoot() { call(.popToRoot) }
+    func clearSearchBar() { call(.clearSearchBar) }
+    func openPreferences() { call(.openPreferences) }
 
     /// Another of this plugin's commands; a plugin can't launch another's.
     func launchCommand(
         _ commandName: String, background: Bool, arguments: [String: String],
         context: [String: PluginValue]
     ) async throws {
-        let type = background ? ExtensionLaunchType.background : ExtensionLaunchType.userInitiated
-        let options: [String: RenderValue] = [
-            "name": .string(commandName), "extensionName": .string(name),
-            "type": .string(type.rawValue),
-            "arguments": .object(arguments.mapValues(RenderValue.string)),
-            "context": .object(context.mapValues(\.renderValue))
-        ]
-        _ = try await perform("system", "launchCommand", [.object(options)])
+        _ = try await perform(
+            .launchCommand(commandName, background: background, arguments: arguments, context: context))
     }
 
     /// Nil puts back the manifest's subtitle.
-    func updateCommandMetadata(subtitle: String?) {
-        call(
-            "system", "updateCommandMetadata",
-            [.object(["subtitle": subtitle.map(RenderValue.string) ?? .null])])
-    }
+    func updateCommandMetadata(subtitle: String?) { call(.updateCommandMetadata(subtitle: subtitle)) }
 
     // MARK: - Applications
 
     func applications(forPath path: String?) async throws -> [PluginApplication] {
-        let json = try await perform("system", "applications", path.map { [.string($0)] } ?? [])
-        return RenderValue.arguments(from: json).compactMap(PluginApplication.init)
+        guard case .applications(let found) = try await perform(.applications(path: path)) else { return [] }
+        return found
     }
 
     func defaultApplication(for path: String) async throws -> PluginApplication? {
-        let json = try await perform("system", "defaultApplication", [.string(path)])
-        return PluginApplication(RenderValue(json: Self.object(json)))
+        guard case .application(let found) = try await perform(.defaultApplication(path: path)) else { return nil }
+        return found
     }
 
     func frontmostApplication() async throws -> PluginApplication? {
-        let json = try await perform("system", "frontmostApplication", [])
-        return PluginApplication(RenderValue(json: Self.object(json)))
+        guard case .application(let found) = try await perform(.frontmostApplication) else { return nil }
+        return found
     }
 
     // MARK: - OAuth: PKCE runs here, natively; the host runs the browser sign-in and keeps the tokens
@@ -231,7 +166,7 @@ final class PluginEnvironment {
         let verifier = Self.randomURLSafe(32)
         let challenge = Self.base64URL(Data(SHA256.hash(data: Data(verifier.utf8))))
         let state = Self.randomURLSafe(16)
-        let redirect = redirectURI ?? "\(appScheme)://oauth?plugin=\(name.dropFirst(PluginManifest.hostNamePrefix.count))"
+        let redirect = redirectURI ?? "\(appScheme)://oauth?plugin=\(name)"
         var items = [
             URLQueryItem(name: "response_type", value: "code"), URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "redirect_uri", value: redirect), URLQueryItem(name: "scope", value: scope),
@@ -255,7 +190,9 @@ final class PluginEnvironment {
         guard let scheme = URL(string: request.redirectURI)?.scheme else {
             throw PluginOAuthError.invalidRedirect(request.redirectURI)
         }
-        let redirect = try await perform("oauth", "authorize", [.string(request.url), .string(scheme)])
+        guard case .text(let redirect) = try await perform(.authorize(url: request.url, scheme: scheme)) else {
+            throw PluginOAuthError.noCode(providerName)
+        }
         // A redirect's query is form-encoded (RFC 6749 §4.1.2): `+` is a space, as `URLSearchParams` reads it.
         var components = URLComponents(string: redirect)
         let query = components?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%20")
@@ -269,36 +206,24 @@ final class PluginEnvironment {
         return code
     }
 
-    /// Stored in the shape Raycast's `setTokens` keeps, under the plugin's host name.
+    /// Kept by the app under the plugin's name and the provider's.
     func setOAuthTokens(
         provider: String, accessToken: String, refreshToken: String?, idToken: String?, expiresIn: Double?,
         scope: String?
     ) async throws {
-        var tokens: [String: Any] = [
-            "accessToken": accessToken, "updatedAt": ISO8601DateFormatter().string(from: Date())
-        ]
-        tokens["refreshToken"] = refreshToken
-        tokens["idToken"] = idToken
-        tokens["expiresIn"] = expiresIn
-        tokens["scope"] = scope
-        _ = try await perform("oauth", "setTokens", [.string(provider), .string(ExtensionJSON.string(from: tokens))])
+        let tokens = PluginOAuthTokens(
+            accessToken: accessToken, refreshToken: refreshToken, idToken: idToken, expiresIn: expiresIn,
+            scope: scope, updatedAt: Date().timeIntervalSince1970)
+        _ = try await perform(.setTokens(provider: provider, tokens))
     }
 
     func oauthTokens(provider: String) async throws -> PluginOAuthTokens? {
-        let stored = try await perform("oauth", "getTokens", [.string(provider)])
-        guard let data = stored.data(using: .utf8), !data.isEmpty,
-            let fields = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let accessToken = fields["accessToken"] as? String
-        else { return nil }
-        let updatedAt = (fields["updatedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
-        return PluginOAuthTokens(
-            accessToken: accessToken, refreshToken: fields["refreshToken"] as? String,
-            idToken: fields["idToken"] as? String, expiresIn: fields["expiresIn"] as? Double,
-            scope: fields["scope"] as? String, updatedAt: updatedAt.timeIntervalSince1970)
+        guard case .tokens(let tokens) = try await perform(.tokens(provider: provider)) else { return nil }
+        return tokens
     }
 
     func removeOAuthTokens(provider: String) async throws {
-        _ = try await perform("oauth", "setTokens", [.string(provider), .null])
+        _ = try await perform(.setTokens(provider: provider, nil))
     }
 
     private static func randomURLSafe(_ count: Int) -> String {
@@ -315,30 +240,24 @@ final class PluginEnvironment {
 
     // MARK: - Plumbing
 
-    private func toastPayload(
-        _ style: String, _ title: String, _ message: String?, _ actionTitle: String?,
-        _ token: String?
-    ) -> RenderValue {
-        var payload: [String: RenderValue] = ["style": .string(style), "title": .string(title)]
-        if let message { payload["message"] = .string(message) }
-        if let token {
-            payload["primaryAction"] = .object([
-                "title": .string(actionTitle ?? String(localized: "Open")), "token": .string(token)
-            ])
-        }
-        return .object(payload)
+    private static func toast(
+        _ style: String, _ title: String, _ message: String?, _ actionTitle: String?, _ token: String?
+    ) -> PluginToast {
+        PluginToast(
+            style: PluginToast.Style(rawValue: style) ?? .success, title: title, message: message,
+            actionTitle: token == nil ? nil : (actionTitle ?? String(localized: "Open")), actionToken: token)
     }
 
     /// Fire and forget: a failure is the plugin's, reported on its screen. The runtime waits for
     /// these (`callsAnswered`) before it says a command finished, so a copy or a HUD an action
     /// ends with reaches the app before its session stops.
-    private func call(_ api: String, _ method: String, _ arguments: [RenderValue]) {
+    private func call(_ call: PluginHostCall) {
         guard let hostAPI else { return }
         let report = onError
         callsInFlight += 1
         Task { @MainActor in
             do {
-                _ = try await hostAPI.perform(api: api, method: method, arguments: arguments)
+                _ = try await hostAPI.perform(call)
             } catch {
                 report(error)
             }
@@ -360,26 +279,9 @@ final class PluginEnvironment {
         await withCheckedContinuation { callWaiters.append($0) }
     }
 
-    private func perform(
-        _ api: String, _ method: String, _ arguments: [RenderValue]
-    ) async throws -> String {
-        guard let hostAPI else { throw ExtensionHostError.noActiveExtension }
-        return try await hostAPI.perform(api: api, method: method, arguments: arguments)
-    }
-
-    private static func value(_ stored: ExtensionStorage.StoredValue) -> PluginValue {
-        switch stored {
-        case .string(let text): .string(text)
-        case .number(let number): .number(number)
-        case .bool(let flag): .bool(flag)
-        }
-    }
-
-    private static func object(_ json: String) -> Any {
-        guard let data = json.data(using: .utf8),
-            let value = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-        else { return NSNull() }
-        return value
+    private func perform(_ call: PluginHostCall) async throws -> PluginHostAnswer {
+        guard let hostAPI else { throw PluginHostError.noSession }
+        return try await hostAPI.perform(call)
     }
 }
 
@@ -395,7 +297,7 @@ struct PluginOAuthRequest {
 
 /// A provider's stored tokens; `updatedAt` in seconds since 1970.
 @ScriftExport
-struct PluginOAuthTokens {
+struct PluginOAuthTokens: Codable, Sendable, Equatable {
     var accessToken: String
     var refreshToken: String?
     var idToken: String?
@@ -428,29 +330,20 @@ enum PluginOAuthError: LocalizedError, CustomStringConvertible, CustomDebugStrin
 
 /// An application as `getApplications` describes it.
 @ScriftExport
-struct PluginApplication {
+struct PluginApplication: Codable, Sendable, Equatable {
     var name: String
     var path: String
     var bundleID: String?
 }
 
-extension PluginApplication {
-    init?(_ value: RenderValue) {
-        guard let fields = value.objectValue, let name = fields["name"]?.stringValue,
-            let path = fields["path"]?.stringValue
-        else { return nil }
-        self.init(name: name, path: path, bundleID: fields["bundleId"]?.stringValue)
-    }
-}
-
 extension PluginEnvironment {
     static func make(
-        plugin: PluginManifest, command: String, storage: any PluginStorage, hostAPI: ExtensionHostAPI,
+        plugin: PluginManifest, command: String, storage: any PluginStorage, hostAPI: any PluginHostAPI,
         appScheme: String, onInvalidate: @escaping () -> Void, onError: @escaping (any Error) -> Void
     ) -> PluginEnvironment {
         let environment = PluginEnvironment()
         environment.appScheme = appScheme
-        environment.name = plugin.hostName
+        environment.name = plugin.name
         environment.command = command
         environment.urlSchemes = plugin.urlSchemes
         environment.storage = storage

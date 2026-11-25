@@ -16,11 +16,12 @@ struct CleanShot: View {
                 ForEach(desktop) { tool in ToolRow(tool: tool) }
             }
             Section {
-                Item("Settings", subtitle: "CleanShot X", systemImage: "gearshape")
-                    .tint(.gray)
-                    .actions {
+                Label("Settings", systemImage: "gearshape")
+                    .foregroundStyle(.gray)
+                    .subtitle("CleanShot X")
+                    .contextMenu {
                         Link("Open Settings", destination: "cleanshot://open-settings")
-                        for (tab, title) in settingsTabs {
+                        ForEach(settingsTabs, id: \.0) { tab, title in
                             Link("Open \(title) Settings", destination: "cleanshot://open-settings?tab=\(tab)")
                         }
                     }
@@ -35,13 +36,14 @@ struct ToolRow: View {
     let tool: Tool
 
     var body: some View {
-        Item(tool.title, subtitle: tool.subtitle, systemImage: tool.systemImage)
-            .tint(.blue)
-            .keywords([tool.command])
-            .actions {
+        Label(tool.title, systemImage: tool.systemImage)
+            .foregroundStyle(.blue)
+            .subtitle(tool.subtitle)
+            .searchKeywords(tool.command)
+            .contextMenu {
                 Link(tool.takesAfterCapture ? "Capture" : "Open", destination: tool.url())
                 if tool.takesAfterCapture {
-                    for after in AfterCapture.allCases {
+                    ForEach(AfterCapture.allCases, id: \.self) { after in
                         Link(after.title, destination: tool.url(after: after))
                     }
                 }

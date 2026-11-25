@@ -3,9 +3,8 @@ import SwiftUI
 
 struct PluginsSettingsView: View {
     @Environment(AppCore.self) private var core
-    @Environment(ExtensionLibrary.self) private var library
     @Environment(SettingsNavigationState.self) private var navigation
-    /// The open row's host name (`plugin.<name>`), which "Configure Plugin" navigates to.
+    /// The open row's plugin name, which "Configure Plugin" navigates to.
     @State private var expanded: String?
 
     var body: some View {
@@ -32,7 +31,7 @@ struct PluginsSettingsView: View {
         .settingsScrollTarget(.plugins)
         // Listed from disk here; the main app runs them, and its set moving moves the revision.
         .task(id: settings.pluginsEnabled) { await core.plugins.list(settings.pluginsEnabled) }
-        .onChange(of: library.catalogRevision) {
+        .onChange(of: core.mainApp?.status.plugins.revision) {
             Task { await core.plugins.list(core.settings.pluginsEnabled) }
         }
         .onChange(of: navigation.scrollRequest, initial: true) {
@@ -48,7 +47,9 @@ struct PluginsSettingsView: View {
             }
             ForEach(core.plugins.installed) { plugin in
                 PluginSettingsRow(
-                    plugin: plugin, hosted: hosted(plugin), expanded: $expanded,
+                    plugin: plugin, isConfigurable: core.settings.pluginsEnabled,
+                    status: core.mainApp?.status.plugins ?? MainAppStatus.Plugins(),
+                    send: { core.mainApp?.send($0) }, expanded: $expanded,
                     onReveal: { NSWorkspace.shared.activateFileViewerSelecting([plugin.directory]) })
             }
             HStack {
@@ -64,12 +65,6 @@ struct PluginsSettingsView: View {
         }
     }
 
-    /// The plugin as the Extensions host runs it, whose settings the row's card edits.
-    private func hosted(_ plugin: InstalledPlugin) -> InstalledExtension? {
-        guard core.settings.pluginsEnabled, case .success(let manifest) = plugin.manifest else { return nil }
-        return core.plugins.hostExtensions().first { $0.manifest.name == manifest.hostName }
-    }
-
     private func revealPluginsFolder() {
         let directory = PluginCatalog.pluginsDirectory()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -79,15 +74,17 @@ struct PluginsSettingsView: View {
 
 private struct PluginSettingsRow: View {
     let plugin: InstalledPlugin
-    /// Nil while plugins are off, or for a plugin whose manifest failed.
-    let hosted: InstalledExtension?
+    /// False while plugins are off: the main app keeps nothing for them to edit.
+    let isConfigurable: Bool
+    let status: MainAppStatus.Plugins
+    let send: (SettingsAction) -> Void
     @Binding var expanded: String?
     let onReveal: () -> Void
 
     var body: some View {
         switch plugin.manifest {
         case .success(let manifest):
-            let isExpanded = hosted != nil && expanded == manifest.hostName
+            let isExpanded = isConfigurable && expanded == manifest.name
             VStack(alignment: .leading, spacing: 0) {
                 SettingsRow(title: manifest.title, subtitle: summary(manifest), subtitleLineLimit: 2) {
                     icon(manifest.icon ?? "puzzlepiece", tint: SettingsTab.plugins.tint)
@@ -100,7 +97,7 @@ private struct PluginSettingsRow: View {
                     .buttonStyle(.plain)
                     .help("Show in Finder")
                     .accessibilityLabel("Show \(manifest.title) in Finder")
-                    if hosted != nil {
+                    if isConfigurable {
                         Image(systemName: "chevron.down")
                             .rotationEffect(.degrees(isExpanded ? 180 : 0))
                             .foregroundStyle(.secondary)
@@ -109,16 +106,16 @@ private struct PluginSettingsRow: View {
                 }
                 .contentShape(.rect)
                 .onTapGesture {
-                    guard hosted != nil else { return }
-                    expanded = isExpanded ? nil : manifest.hostName
+                    guard isConfigurable else { return }
+                    expanded = isExpanded ? nil : manifest.name
                 }
-                .accessibilityAddTraits(hosted == nil ? [] : .isButton)
-                if isExpanded, let hosted {
-                    ExtensionSettingsCard(installed: hosted)
+                .accessibilityAddTraits(isConfigurable ? .isButton : [])
+                if isExpanded {
+                    PluginSettingsCard(manifest: manifest, directory: plugin.directory, status: status, send: send)
                         .padding(.top, Theme.Spacing.lg)
                 }
             }
-            .id(SettingsTarget.row(.pluginsInstalled, manifest.hostName))
+            .id(SettingsTarget.row(.pluginsInstalled, manifest.name))
         case .failure(let error):
             SettingsRow(
                 title: plugin.directory.lastPathComponent, subtitle: error.description,
@@ -136,7 +133,7 @@ private struct PluginSettingsRow: View {
         }
     }
 
-    /// A tile is a `GeometryReader`, so it takes the size it's given: an extension's row icon size.
+    /// A tile is a `GeometryReader`, so it takes the size it's given: a settings row's icon size.
     private func icon(_ symbol: String, tint: IconTint) -> some View {
         IconTile(symbol: symbol, tint: tint)
             .frame(width: Theme.Size.rowIcon, height: Theme.Size.rowIcon)

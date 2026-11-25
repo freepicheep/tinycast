@@ -53,7 +53,7 @@ struct PaletteTabTests {
 
         expect(
             PaletteTabAction.resolve(
-                mode: .extensionCommand, aiEnabled: true, clipboardEnabled: true),
+                mode: .pluginCommand, aiEnabled: true, clipboardEnabled: true),
             .carryQuery(.launcher),
             "an extension command exits to the launcher rather than joining the ring")
 
